@@ -21,6 +21,44 @@ enum class EG1TPlatform : uint32_t
 	NSwitch = 0x10,
 };
 
+enum class EG1TASTCFormat : uint8_t //Most of these are educated guesses based on a few confirmed ones
+{
+	ASTC_4_4 = 0x0, //Confirmed
+	ASTC_5_4 = 0x1,
+	ASTC_5_5 = 0x2,
+	ASTC_6_5 = 0x3,
+	ASTC_6_6 = 0x4,
+	ASTC_8_5 = 0x5,
+	ASTC_8_6 = 0x6,
+	ASTC_8_8 = 0x7, //Confirmed
+	ASTC_10_5 = 0x8,
+	ASTC_10_6 = 0x9,
+	ASTC_10_8 = 0xA,
+	ASTC_10_10 = 0xB,
+	ASTC_12_10 = 0xC,
+	ASTC_12_12 = 0xD,
+};
+
+template <bool bBigEndian>
+struct G1TASTCExtraInfo
+{
+	uint16_t unk0;
+	uint16_t unk1;
+	EG1TASTCFormat format;
+	uint8_t unk2;
+	uint16_t unk3;
+
+	G1TASTCExtraInfo(G1TASTCExtraInfo* ptr) : G1TASTCExtraInfo(*ptr)
+	{
+		if (bBigEndian)
+		{
+			LITTLE_BIG_SWAP(unk0);
+			LITTLE_BIG_SWAP(unk1);
+			LITTLE_BIG_SWAP(unk3);
+		}
+	}
+};
+
 template <bool bBigEndian>
 struct G1TTextureInfo
 {
@@ -97,6 +135,7 @@ struct G1THeader
 	uint32_t tableOffset;
 	uint32_t textureCount;
 	EG1TPlatform platform;
+	uint32_t ASTCExtraInfoSize;
 
 	G1THeader(G1THeader* ptr) : G1THeader(*ptr)
 	{
@@ -105,6 +144,7 @@ struct G1THeader
 			LITTLE_BIG_SWAP(tableOffset);
 			LITTLE_BIG_SWAP(textureCount);
 			LITTLE_BIG_SWAP(platform);
+			LITTLE_BIG_SWAP(ASTCExtraInfoSize);
 		}
 	}
 };
@@ -113,14 +153,9 @@ template <bool bBigEndian>
 struct G1T
 {
 	std::vector<uint32_t> offsetList;
+	std::vector<G1TASTCExtraInfo<bBigEndian>> ASTCExtraInfoList;
 	G1T(BYTE* buffer, int bufferLen, CArrayList<noesisTex_t*>& noeTex, noeRAPI_t* rapi)
 	{
-		//Open debug log
-		if (bDebugLog)
-		{
-			g_nfn->NPAPI_PopupDebugLog(0);
-		}
-
 		//Read header
 		uint32_t offset = 0;
 		G1THeader<bBigEndian> header = reinterpret_cast<G1THeader<bBigEndian>*>(buffer);
@@ -134,33 +169,33 @@ struct G1T
 			for (auto& offs : offsetList)
 				LITTLE_BIG_SWAP(offs);
 		}
+		offset += header.textureCount * 4;
+
+		//Get ASTC extra info
+		for (auto i = 0; i < header.ASTCExtraInfoSize/4; i++)
+		{
+			ASTCExtraInfoList.push_back(reinterpret_cast<G1TASTCExtraInfo<bBigEndian>*>(buffer + offset + 8*i));
+		}
 
 		//Get operators ready
 		//PS4 swizzle
-		typedef void(*NoesisMisc_Untile1dThin_p)(uint8_t * pDest, const uint32_t destSize, const uint8_t * pSrc, const uint32_t srcSize, const uint32_t w, const uint32_t h, const uint32_t bitsPerTexel,bool isBC, noeRAPI_t * pRapi);
+		typedef void(*NoesisMisc_Untile1dThin_p)(uint8_t* pDest, const uint32_t destSize, const uint8_t* pSrc, const uint32_t srcSize, const uint32_t w, const uint32_t h, const uint32_t bitsPerTexel, bool isBC, noeRAPI_t* pRapi);
 		NoesisMisc_Untile1dThin_p NoesisMisc_Untile1dThin = NULL;
 		NoesisMisc_Untile1dThin = (NoesisMisc_Untile1dThin_p)g_nfn->NPAPI_GetUserExtProc("NoesisMisc_Untile1dThin");
 
-		//so the file name stays in the texture
-		std::string inFile = rapi->Noesis_GetLastCheckedName();
-		std::filesystem::path pathObj(inFile);
-		std::string fileName = pathObj.stem().string();
-		fileName.append("out%d.dds");
-		const char* fileNameC = fileName.c_str();
-
 		//Process textures
-		for (auto i =0;i<offsetList.size(); i++)
+		for (auto i = 0; i < offsetList.size(); i++)
 		{
 			uint32_t offs = offsetList[i];
 			offset = header.tableOffset + offs;
-			G1TTextureInfo<bBigEndian> texHeader = G1TTextureInfo<bBigEndian>(buffer,offset);
+			G1TTextureInfo<bBigEndian> texHeader = G1TTextureInfo<bBigEndian>(buffer, offset);
 
 			bool bNormalized = true;
 			bool bSpecialCaseETC = false;
 			bool b3DSAlpha = false;
 			bool bETCAlpha = false;
 			bool bNeedsX360EndianSwap = false;
-			std::string rawFormat ="";
+			std::string rawFormat = "";
 			int fourccFormat = -1;
 
 			int32_t computedSize = -1;
@@ -169,8 +204,6 @@ struct G1T
 			uint32_t height = texHeader.height;
 			uint32_t originalSize = computedSize;
 			uint32_t pvrtcBpp = 0;
-			int ASTCblock1 = 0;
-			int	ASTCblock2 = 0;
 			switch (texHeader.textureFormat)
 			{
 			case 0x0:
@@ -339,22 +372,10 @@ struct G1T
 				bETCAlpha = true;
 				break;
 			case 0x7D:
-				rawFormat = "ASTC_8_8";
-				ASTCblock1 = 8;
-				ASTCblock2 = 8;
-				computedSize = width * height / 4;
+				rawFormat = "ASTC";
 				break;
 			default:
 				break;
-			}
-
-			if (bDebugLog)
-			{
-				char texName0[128];
-				const char* texName0C = rawFormat.c_str();
-				snprintf(texName0, 128, texName0C);
-				g_nfn->NPAPI_DebugLogStr("\nformat: ");
-				g_nfn->NPAPI_DebugLogStr(texName0);
 			}
 
 			bool bRaw = (rawFormat != "") ? true : false;
@@ -372,14 +393,6 @@ struct G1T
 					dataSize = offsetList[i + 1] - offsetList[i] - texHeader.headerSize;
 				else
 					dataSize = bufferLen - offsetList[i] - texHeader.headerSize - header.tableOffset;
-			}
-
-			if (bDebugLog)
-			{
-				char texName1[128];
-				snprintf(texName1, 128, "%d", computedSize);
-				g_nfn->NPAPI_DebugLogStr("\nread size: ");
-				g_nfn->NPAPI_DebugLogStr(texName1);
 			}
 
 			if (header.platform == EG1TPlatform::X360)
@@ -420,7 +433,7 @@ struct G1T
 					break;
 				case EG1TPlatform::NSwitch:
 				{
-					untiledTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize*4);
+					untiledTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize * 4);
 					int blockWidth = 4;
 					int blockHeight = (height <= 256) ? 3 : 4;
 					blockHeight = (height <= 128) ? 2 : blockHeight;
@@ -429,7 +442,7 @@ struct G1T
 					int temp = (height + (blockHeight - 1));
 					int	heightInBlocks = (height + (blockHeight - 1)) / blockHeight;
 					int maxBlockHeight = rapi->Image_TileCalculateBlockLinearGOBBlockHeight(height, blockHeight);
-					rapi->Image_UntileBlockLinearGOBs(untiledTexData, dataSize, buffer + offset, dataSize, widthInBlocks, heightInBlocks, maxBlockHeight, mortonWidth*2);
+					rapi->Image_UntileBlockLinearGOBs(untiledTexData, dataSize, buffer + offset, dataSize, widthInBlocks, heightInBlocks, maxBlockHeight, mortonWidth * 2);
 					break;
 				}
 				default:
@@ -437,7 +450,7 @@ struct G1T
 					if (bRaw)
 						rapi->Image_MortonOrder(buffer + offset, untiledTexData, width, height, mortonWidth, 0);
 					else
-						rapi->Image_MortonOrder(buffer + offset, untiledTexData, width>>1, height>>2, mortonWidth, 1);
+						rapi->Image_MortonOrder(buffer + offset, untiledTexData, width >> 1, height >> 2, mortonWidth, 1);
 					break;
 				}
 			}
@@ -452,7 +465,62 @@ struct G1T
 
 			//Decompress ASTC
 			if (!rawFormat.rfind("ASTC", 0))
-			{
+			{				
+				switch (ASTCExtraInfoList[i].format)
+				{
+				case EG1TASTCFormat::ASTC_4_4:
+					rawFormat = "ASTC_4_4";
+					break;
+				case EG1TASTCFormat::ASTC_5_4:
+					rawFormat = "ASTC_5_4";
+					break;
+				case EG1TASTCFormat::ASTC_5_5:
+					rawFormat = "ASTC_5_5";
+					break;
+				case EG1TASTCFormat::ASTC_6_5:
+					rawFormat = "ASTC_6_5";
+					break;
+				case EG1TASTCFormat::ASTC_6_6:
+					rawFormat = "ASTC_6_6";
+					break;
+				case EG1TASTCFormat::ASTC_8_5:
+					rawFormat = "ASTC_8_5";
+					break;
+				case EG1TASTCFormat::ASTC_8_6:
+					rawFormat = "ASTC_8_6";
+					break;
+				case EG1TASTCFormat::ASTC_8_8:
+					rawFormat = "ASTC_8_8";
+					break;
+				case EG1TASTCFormat::ASTC_10_5:
+					rawFormat = "ASTC_10_5";
+					break;
+				case EG1TASTCFormat::ASTC_10_6:
+					rawFormat = "ASTC_10_6";
+					break;
+				case EG1TASTCFormat::ASTC_10_8:
+					rawFormat = "ASTC_10_8";
+					break;
+				case EG1TASTCFormat::ASTC_10_10:
+					rawFormat = "ASTC_10_10";
+					break;
+				case EG1TASTCFormat::ASTC_12_10:
+					rawFormat = "ASTC_12_10";
+					break;
+				case EG1TASTCFormat::ASTC_12_12:
+					rawFormat = "ASTC_12_12";
+					break;
+				default:
+					assert(0);
+				}
+
+				std::regex reg("_");
+				std::sregex_token_iterator iter(rawFormat.begin(), rawFormat.end(), reg, -1);
+				std::sregex_token_iterator end;
+				std::vector<std::string> blockSizes(iter, end);
+				int ASTCblock1 = stoi(blockSizes[1]);
+				int ASTCblock2 = stoi(blockSizes[2]);
+
 				int pBlockDims[3] = { ASTCblock1, ASTCblock2, 1 };
 				int pImageSize[3] = { width, height, 1 };
 				untiledTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize * 16);
@@ -462,9 +530,9 @@ struct G1T
 			}
 
 			//Decompress ETC
-			if (!rawFormat.rfind("ETC",0))
+			if (!rawFormat.rfind("ETC", 0))
 			{
-				untiledTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize*8);
+				untiledTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize * 8);
 				if (bETCAlpha)
 				{
 					rapi->Image_DecodeETC(untiledTexData, buffer + offset, dataSize, width, height, "RGBA");
@@ -490,7 +558,7 @@ struct G1T
 			if (!rawFormat.rfind("3DS", 0))
 			{
 				untiledTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(width * height * 16);
-				rapi->Image_DecodePICA200ETC(untiledTexData, buffer + offset, width, height, b3DSAlpha,0,0);
+				rapi->Image_DecodePICA200ETC(untiledTexData, buffer + offset, width, height, b3DSAlpha, 0, 0);
 				flip_vertically(untiledTexData, width, height, 4);
 				rawFormat = "r8g8b8a8";
 			}
@@ -512,7 +580,7 @@ struct G1T
 				}
 				else
 				{
-					convertDxtExParams_t* params = (convertDxtExParams_t *)rapi->Noesis_UnpooledAlloc(sizeof(convertDxtExParams_t));
+					convertDxtExParams_t* params = (convertDxtExParams_t*)rapi->Noesis_UnpooledAlloc(sizeof(convertDxtExParams_t));
 					params->ati2ZScale = 0.0;
 					params->ati2NoNormalize = true;
 					params->decodeAsSigned = false;
@@ -524,110 +592,15 @@ struct G1T
 				}
 			}
 
-			if (bttHeight)
-			{
-				//create resize space
-				BYTE* texData2 = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize);
-				//resize
-				rapi->Noesis_ResampleImageNearest(texData, width, height, texData2, width, height*.66, 0);
-				height *= .66;
-				//replace
-				rapi->Noesis_UnpooledFree(texData);
-				texData = texData2;
-			}
-
-			if (bhHeight)
-			{
-				//create resize space
-				BYTE* texData2 = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize);
-				//resize
-				rapi->Noesis_ResampleImageNearest(texData, width, height, texData2, width, height*.5, 0);
-				height *= .5;
-				//replace
-				rapi->Noesis_UnpooledFree(texData);
-				texData = texData2;
-			}
-
-			if (btHeight)
-			{
-				//create resize space
-				BYTE* texData2 = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize);
-				//resize
-				rapi->Noesis_ResampleImageNearest(texData, width, height, texData2, width, height*.33, 0);
-				height *= .33;
-				//replace
-				rapi->Noesis_UnpooledFree(texData);
-				texData = texData2;
-			}
-
-			if (bttWidth)
-			{
-				//create resize space
-				BYTE* texData3 = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize);
-				//resize
-				rapi->Noesis_ResampleImageNearest(texData, width, height, texData3, width*.66, height, 0);
-				width *= .66;
-				//replace
-				rapi->Noesis_UnpooledFree(texData);
-				texData = texData3;
-			}
-
-			if (bhWidth)
-			{
-				//create resize space
-				BYTE* texData3 = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize);
-				//resize
-				rapi->Noesis_ResampleImageNearest(texData, width, height, texData3, width*.5, height, 0);
-				width *= .5;
-				//replace
-				rapi->Noesis_UnpooledFree(texData);
-				texData = texData3;
-			}
-
-			if (btWidth)
-			{
-				//create resize space
-				BYTE* texData3 = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize);
-				//resize
-				rapi->Noesis_ResampleImageNearest(texData, width, height, texData3, width*.33, height, 0);
-				width *= .33;
-				//replace
-				rapi->Noesis_UnpooledFree(texData);
-				texData = texData3;
-			}
-
-			if (bDebugLog)
-			{
-				char texnumber3[128];
-				snprintf(texnumber3, 128, "%d", height);
-				char texnumber4[128];
-				snprintf(texnumber4, 128, "%d", width);
-				g_nfn->NPAPI_DebugLogStr("\nheight: ");
-				g_nfn->NPAPI_DebugLogStr(texnumber3);
-				g_nfn->NPAPI_DebugLogStr("\nwidth: ");
-				g_nfn->NPAPI_DebugLogStr(texnumber4);
-				char texnumber5[128];
-				snprintf(texnumber5, 128, "%d", dataSize);
-				g_nfn->NPAPI_DebugLogStr("\ndataSize: ");
-				g_nfn->NPAPI_DebugLogStr(texnumber4);
-				g_nfn->NPAPI_DebugLogStr("\n");
-			}
-
 			//Create the texture
 			char texName[128];
-			snprintf(texName, 128, fileNameC, noeTex.Num());
+			snprintf(texName, 128, "%d.dds", noeTex.Num());
 			noesisTex_t* texture = rapi->Noesis_TextureAlloc(texName, width, height, texData, NOESISTEX_RGBA32);
 			texture->shouldFreeData = true;
 			texture->globalIdx = noeTex.Num();
 			noeTex.Append(texture);
 
-			if (bDebugLog)
-			{
-				g_nfn->NPAPI_DebugLogStr("\ntexName: ");
-				g_nfn->NPAPI_DebugLogStr(texName);
-				g_nfn->NPAPI_DebugLogStr("\n");
-			}
-			if(bShouldFreeUntiled)
+			if (bShouldFreeUntiled)
 				rapi->Noesis_UnpooledFree(untiledTexData);
 		}
 	}
