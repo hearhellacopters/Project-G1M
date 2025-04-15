@@ -21,7 +21,7 @@ enum class PLATFORM : uint32_t
 	NWiiU   = 0x09, // Big Endian
 	WinMac  = 0x0A, // Little Endian
 	PS4     = 0x0B, // Little Endian
-  //XOne    = 0x0C, // Little Endian - need game rom to confrim this
+  //XOne    = 0x0C, // Little Endian - game rom to confrim this
   //???     = 0x0D, 
 	WinDX12 = 0x0E, // Little Endian
   //???     = 0x0F, 
@@ -277,6 +277,7 @@ struct G1T_HEADER
 
 		if (bDebugLog)
 		{
+			char mesBuffer[150] = {};
 			// File name for texture renaming
 			std::string inFile = rapi->Noesis_GetLastCheckedName();
 			std::filesystem::path pathObj(inFile);
@@ -902,7 +903,7 @@ struct G1TG_TEXTURE
 			uint32_t totalTexBufferLen = 0;
 			// texture size in bits per pixel
 			double bitsPerPixel = 0;
-			// smallest byte amount for a single pixel (also compressed block size)
+			// smallest byte amount for a single pixel (includes compressed block formats)
 			uint32_t minBytes = 0;
 
 			///////////////////////////////
@@ -962,6 +963,8 @@ struct G1TG_TEXTURE
 				bSwizzled = true;
 			}
 
+			// for formats that are not unsigned
+			bool bSigned = false;
 			// for blocks format 
 			bool bCompressedFormat = false;
 			bool bNormalized = true;
@@ -974,35 +977,33 @@ struct G1TG_TEXTURE
 			// 3DS ETC Alpha
 			bool b3DSAlpha = false;
 			bool bIsPVRTC = false;
-			// for ASTC sub format
-			bool bIsASTC = false;
+			bool bNeedsX360EndianSwap = false;
 			// TODO: handle P4 images when we find the palettes
 			bool bPalette4 = false;
 			// TODO: handle P8 images when we find the palettes
 			bool bPalette8 = false;
-			// TODO: handle Nintendo Wii P14 images when we find the palettes
+			// TODO: handle Nintendor Wii P14 images when we find the palettes
 			bool bPalette14 = false;
 			bool bFloat = false;
 			bool bHalfFloat = false;
+			// For a2b#F10g#F10r#F10 to r#F32g#F32b#F32a#F32
+			bool bConvert10BitFloat = false;
+			// For r#F11g#F11b#F10 to r#F32g#F32b#F32
+			bool bConvert11Bit10BitFloat = false;
 			// for textures that are depth and stencil
 			bool bIsDepth = false;
 			// unsigned normalized
 			bool bIsUNorm = false;
-			// for formats that are not unsigned
-			bool bSigned = false;
-			bool bNeedsX360EndianSwap = false;
-			// For a2b#F10g#F10r#F10 -> r#F32g#F32b#F32a#F32
-			bool bConvert10BitFloat = false;
-			// For r#F11g#F11b#F10 -> r#F32g#F32b#F32
-			bool bConvert11Bit10BitFloat = false;
+			// for ASTC sub format
+			bool bIsASTC = false;
 			// for d24s8 textures to r24b24g24a8
-			bool bConvertD24_8 = false;
+			bool bD24_8Convert = false;
 			// for d16 to r16b16g16
-			bool bConvertD16 = false;
+			bool bD16Convert = false;
 			// for d32 to r#F32B#F32g#F32
-			bool bConvertD32 = false;
+			bool bD32Convert = false;
 			// for d#F32p24s8 to r#F32B#F32g#F32a#F32
-			bool bConvertD32Float = false;
+			bool bD32FloatConvert = false;
 			// for BC1-7 & DXT
 			int fourccFormat = -1;
 			// for compressed block sizes
@@ -1053,7 +1054,7 @@ struct G1TG_TEXTURE
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
 				bIsDepth = true;
-				bConvertD24_8 = true;
+				bD24_8Convert = true;
 				bIsUNorm = true;
 				break;
 			case 0x06: // GL_COMPRESSED_RGBA_S3TC_DXT1_EXT GL_RGBA GL_UNSIGNED_BYTE BC1
@@ -1161,7 +1162,7 @@ struct G1TG_TEXTURE
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
 				bIsDepth = true;
-				bConvertD24_8 = true;
+				bD24_8Convert = true;
 				bIsUNorm = true;
 				break;
 			case 0x14: // GL_DEPTH_COMPONENT16 GL_DEPTH_COMPONENT GL_UNSIGNED_SHORT
@@ -1169,7 +1170,7 @@ struct G1TG_TEXTURE
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
 				bIsDepth = true;
-				bConvertD16 = true;
+				bD16Convert = true;
 				break;
 			case 0x15: // DXGI_FORMAT_R16_TYPELESS DXGI_FORMAT_R16_UNORM DXGI_FORMAT_D16_UNORM
 				rawFormat = "d16";
@@ -1554,7 +1555,7 @@ struct G1TG_TEXTURE
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
 				bIsDepth = true;
-				bConvertD32 = true;
+				bD32Convert = true;
 				bFloat = true;
 				break;
 			case 0x50: // SCE_GXM_TEXTURE_FORMAT_PVRTII2BPP_SWIZZLE4_ABGR
@@ -1805,7 +1806,7 @@ struct G1TG_TEXTURE
 				minBytes = 0x08;
 				bIsDepth = true;
 				bFloat = true;
-				bConvertD32Float = true;
+				bD32FloatConvert = true;
 				break;
 			case 0x6D: // DXGI_FORMAT_R32G8X24_TYPELESS DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS DXGI_FORMAT_D32_FLOAT_S8X24_UINT 
 				rawFormat = "d#F32s8p24";
@@ -1813,7 +1814,7 @@ struct G1TG_TEXTURE
 				minBytes = 0x08;
 				bIsDepth = true;
 				bFloat = true;
-				bConvertD32Float = true;
+				bD32FloatConvert = true;
 				break;
 			case 0x6E: // SEC_R16 SEC_R16 SEC_UNORM
 				rawFormat = "r16";
@@ -2322,21 +2323,21 @@ struct G1TG_TEXTURE
 				{
 					LogDebug("\tbIsDepth:\t\t%s\n", bIsDepth ? "true" : "false");
 				}
-				if (bConvertD16)
+				if (bD16Convert)
 				{
-					LogDebug("\tbConvertD16:\t\t%s\n", bConvertD16 ? "true" : "false");
+					LogDebug("\tbD16Convert:\t\t%s\n", bD16Convert ? "true" : "false");
 				}
-				if (bConvertD32)
+				if (bD32Convert)
 				{
-					LogDebug("\tbConvertD32:\t\t%s\n", bConvertD32 ? "true" : "false");
+					LogDebug("\tbD32Convert:\t\t%s\n", bD32Convert ? "true" : "false");
 				}
-				if (bConvertD32Float)
+				if (bD32FloatConvert)
 				{
-					LogDebug("\tbConvertD32Float:\t\t%s\n", bConvertD32Float ? "true" : "false");
+					LogDebug("\tbD32FloatConvert:\t\t%s\n", bD32FloatConvert ? "true" : "false");
 				}
-				if (bConvertD24_8)
+				if (bD24_8Convert)
 				{
-					LogDebug("\tbConvertD24_8:\t\t%s\n", bConvertD24_8 ? "true" : "false");
+					LogDebug("\tbD24_8Convert:\t\t%s\n", bD24_8Convert ? "true" : "false");
 				}
 				if (bConvert10BitFloat)
 				{
@@ -2802,7 +2803,7 @@ struct G1TG_TEXTURE
 				}
 
 				// Depth & Stecil convert
-				if (bConvertD24_8)
+				if (bD24_8Convert)
 				{
 					bitsPerPixel = 0x50;
 					postConvertTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8)); bPostConvertTexShouldFree = true;
@@ -2811,7 +2812,7 @@ struct G1TG_TEXTURE
 					currentImageSize = (uint32_t)((WIDTH * HEIGHT * bitsPerPixel) / 8);
 					passOffPointer = postConvertTexData;
 				}
-				else if (bConvertD16)
+				else if (bD16Convert)
 				{
 					bitsPerPixel = 0x30;
 					postConvertTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8)); bPostConvertTexShouldFree = true;
@@ -2820,7 +2821,7 @@ struct G1TG_TEXTURE
 					currentImageSize = (uint32_t)((WIDTH * HEIGHT * bitsPerPixel) / 8);
 					passOffPointer = postConvertTexData;
 				}
-				else if (bConvertD32)
+				else if (bD32Convert)
 				{
 					bitsPerPixel = 0x60;
 					postConvertTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8)); bPostConvertTexShouldFree = true;
@@ -2848,7 +2849,7 @@ struct G1TG_TEXTURE
 					currentImageSize = (uint32_t)((WIDTH * HEIGHT * bitsPerPixel) / 8);
 					passOffPointer = postConvertTexData;
 				}
-				else if (bConvertD32Float)
+				else if (bD32FloatConvert)
 				{
 					bitsPerPixel = 0x80;
 					postConvertTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8)); bPostConvertTexShouldFree = true;

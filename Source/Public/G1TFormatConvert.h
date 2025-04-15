@@ -3519,7 +3519,7 @@ void GenerateMipOffsets(GX2Surface* tex, Gx2SurfaceIn* pIn, Gx2SurfaceOut* pOut)
     uint32_t mipSize = 0;
 
     //List<uint> mipOffsets = new List<uint>();
-    for (uint32_t mipLevel = 0; mipLevel < tex->numMips; mipLevel++)
+    for (int mipLevel = 0; mipLevel < tex->numMips; mipLevel++)
     {
         if (mipLevel != 0)
         {

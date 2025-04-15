@@ -47,8 +47,8 @@ bool bIsNUNO5Global = false; //As of now I'm not sure how this chunk works when 
 bool bNUNO5HasSubsets = false; //Temporary hack to prevent subsets from making anchored cloth to crash
 
 #include "../Public/Options.h"
-#include "../Public/G1TFormatStr.h"     // here for debugging
-#include "../Public/G1TFormatConvert.h" // here for debugging
+#include "../Public/G1TFormatStr.h" // here for debugging
+#include "../Public/G1tFormatConvert.h" // here for debugging
 
 template<bool bBigEndian>
 bool CheckModel(BYTE* fileBuffer, int bufferLen, noeRAPI_t* rapi)
