@@ -1002,7 +1002,7 @@ struct G1TG_TEXTURE
 			bool bD16Convert = false;
 			// for d32 to r#F32B#F32g#F32
 			bool bD32Convert = false;
-			// for d#F32p24s8 to r#F32B#F32g#F32a#F32
+			// for d#F32p24s8 to r#F32b#F32g#F32a#F32
 			bool bD32FloatConvert = false;
 			// for BC1-7 & DXT
 			int fourccFormat = -1;

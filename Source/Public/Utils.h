@@ -56,8 +56,8 @@ void function1(std::array<uint64_t, 4> & quantizedData, RichVec3 & result, float
 void function2(RichVec3 & vec, RichQuat & quat)
 {
 	float angle = sqrt(vec.v[0] * vec.v[0] + vec.v[1] * vec.v[1] + vec.v[2] * vec.v[2]);
-	float s = float(sin(angle * 0.5));
-	float c = float(cos(angle * 0.5));
+	float s = (float)sin(angle * 0.5);
+	float c = (float)cos(angle * 0.5);
 	if (angle > 0.000011920929)
 	{
 		quat.q[0] = vec.v[0] * (s / angle);
@@ -66,9 +66,9 @@ void function2(RichVec3 & vec, RichQuat & quat)
 	}
 	else
 	{
-		quat.q[0] = vec.v[0] * float(0.5);
-		quat.q[1] = vec.v[1] * float(0.5);
-		quat.q[2] = vec.v[2] * float(0.5);
+		quat.q[0] = vec.v[0] * (float)0.5;
+		quat.q[1] = vec.v[1] * (float)0.5;
+		quat.q[2] = vec.v[2] * (float)0.5;
 
 	}
 	quat.q[3] = c;
@@ -83,12 +83,12 @@ void function3(std::vector<std::vector<std::array<float, 4>>> & chanValues, std:
 			allTimes.insert(time);
 	}
 	allTimes.insert(0.0);
-	stride = uint32_t(allTimes.size());
+	stride = (uint32_t)allTimes.size();
 	for (uint32_t u = 0; u < componentCount; u++)
 	{
 		for (auto& t : allTimes)
 		{
-			uint32_t chanIndex = uint32_t(chanValues[index + u].size() - 1);
+			uint32_t chanIndex = (uint32_t)(chanValues[index + u].size() - 1);
 			for (auto v = 0; v < chanTimes[index + u].size(); v++)
 			{
 				float& t1 = chanTimes[index + u][v];
@@ -109,7 +109,7 @@ void function3(std::vector<std::vector<std::array<float, 4>>> & chanValues, std:
 			else
 				t0 = chanTimes[index + u][chanIndex - 1];
 			float tratio = (t - t0) / (t1 - t0);
-			float value = float(a * pow(tratio, 3) + b * pow(tratio, 2) + c * tratio + d);
+			float value = (float)(a * pow(tratio, 3) + b * pow(tratio, 2) + c * tratio + d);
 			allValues.push_back(value);
 		}
 	}
@@ -591,7 +591,7 @@ void createDriverIndexBuffers(mesh_t & dMesh, std::vector<RichVec3> polys, std::
 	dMesh.indexBuffer.address = (BYTE*)rapi->Noesis_UnpooledAlloc(sizeof(uint16_t) * 3 * polys.size());
 	unpooledBufs.push_back(dMesh.indexBuffer.address);
 	dMesh.indexBuffer.dataType = RPGEODATA_USHORT;
-	dMesh.indexBuffer.indexCount = uint32_t(polys.size() * 3);
+	dMesh.indexBuffer.indexCount = (uint32_t)(polys.size() * 3);
 	dMesh.indexBuffer.primType = RPGEO_TRIANGLE;
 	uint16_t* tB = (uint16_t*)dMesh.indexBuffer.address;
 	for (auto i = 0; i < polys.size(); i++)
