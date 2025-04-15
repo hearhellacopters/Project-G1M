@@ -96,7 +96,7 @@ struct SOFT1
 
 		parentID = entryHeader.parentID;
 
-		for (auto i = 0; i < entryHeader.nodeCount; i++)
+		for (uint32_t i = 0; i < entryHeader.nodeCount; i++)
 		{
 			Soft1EntryNode<bBigEndian> entryNode = *reinterpret_cast<Soft1EntryNode<bBigEndian>*>(buffer + offset);
 			softNodes.push_back(entryNode);
@@ -134,7 +134,7 @@ struct SOFT
 			LITTLE_BIG_SWAP(sectionCount);
 		}
 		offset += 4;
-		for (auto i = 0; i < sectionCount; i++)
+		for (uint32_t i = 0; i < sectionCount; i++)
 		{
 			NunHeader<bBigEndian> subHeader = reinterpret_cast<NunHeader<bBigEndian>*>(buffer + offset); //Not a typo, exact same struct
 			offset += 12;
@@ -143,7 +143,7 @@ struct SOFT
 			{
 			case SOFT1_MAGIC:
 				checkpoint = 0;
-				for (auto i = 0; i < subHeader.entryCount; i++)
+				for (uint32_t i = 0; i < subHeader.entryCount; i++)
 				{
 					Soft1s.push_back(std::move(SOFT1<bBigEndian>(buffer, offset + checkpoint, header.chunkVersion)));
 					checkpoint += Soft1s.back().entrySize;

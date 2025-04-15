@@ -38,18 +38,17 @@ bool bNoTextureRename = false;
 char g1tConsolePath[MAX_NOESIS_PATH];
 bool bEnableNUNAutoRig = true;
 bool bLoadAllLODs = false;
+bool bPlanes = false;
+bool bFlipVertically = false;
+bool bFlipHorizontally = false;
 bool bDebugLog = false;
-bool bhHeight = false;
-bool bhWidth = false;
-bool btHeight = false;
-bool btWidth = false;
-bool bttHeight = false;
-bool bttWidth = false;
 
 bool bIsNUNO5Global = false; //As of now I'm not sure how this chunk works when paired with other NUNO5 so I'm adding a quick and dirty option until I discover more.
 bool bNUNO5HasSubsets = false; //Temporary hack to prevent subsets from making anchored cloth to crash
 
 #include "../Public/Options.h"
+#include "../Public/G1TFormatStr.h"     // here for debugging
+#include "../Public/G1TFormatConvert.h" // here for debugging
 
 template<bool bBigEndian>
 bool CheckModel(BYTE* fileBuffer, int bufferLen, noeRAPI_t* rapi)
@@ -83,7 +82,7 @@ bool CheckMap(BYTE* fileBuffer, int bufferLen, noeRAPI_t* rapi)
 template<bool bBigEndian>
 bool LoadTexture(BYTE* fileBuffer, int bufferLen, CArrayList<noesisTex_t*>& noeTex, noeRAPI_t* rapi)
 {
-	G1T<bBigEndian>(fileBuffer, bufferLen, noeTex, rapi);
+	G1TG_TEXTURE<bBigEndian>(fileBuffer, bufferLen, noeTex, rapi);
 	if(!bNoTextureRename)
 		rapi->Noesis_ProcessCommands("-texnorepfn"); //avoid renaming of the first texture
 	return 1;
@@ -252,91 +251,51 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 		//Get all the g1m paths if the option was selected
 		if (bMerge || bMatch || bAnimations)
 		{
-			std::filesystem::path inFile1 = rapi->Noesis_GetLastCheckedName();
-			std::filesystem::path pathObj(inFile1);
-
-			// Extract the stem (file name without extension)
-			std::string fileName = pathObj.stem().string();
-
-			/*const char* fileNameC = fileName.c_str();
-			char texnumber1[128];
-			snprintf(texnumber1, 128, fileNameC);
-			g_nfn->NPAPI_DebugLogStr("File Name:\n");
-			g_nfn->NPAPI_DebugLogStr(texnumber1);
-			g_nfn->NPAPI_DebugLogStr("\n");*/
-
-			std::string fileNumber = "";
-
-			for (char c : fileName) {
-				if (std::isdigit(c)) {
-					fileNumber += c;
-				}
-			}
-
-			// Remove any leading zeros
-			fileNumber.erase(0, fileNumber.find_first_not_of('0'));
-
-			/*const char* fileNumberC = fileNumber.c_str();
-			char texnumber2[128];
-			snprintf(texnumber2, 128, fileNumberC);
-			g_nfn->NPAPI_DebugLogStr("File Number:\n");
-			g_nfn->NPAPI_DebugLogStr(texnumber2);
-			g_nfn->NPAPI_DebugLogStr("\n\n");*/
 
 			std::filesystem::path inFile = rapi->Noesis_GetLastCheckedName();
 
+			// match function
 			if (bMatch && inFile.extension() == ".g1m")
 			{
+				std::filesystem::path inFile1 = rapi->Noesis_GetLastCheckedName();
+				std::filesystem::path pathObj(inFile1);
+
+				// Extract the stem (file name without extension)
+				std::string fileName = pathObj.stem().string();
+				std::string fileNumber = "";
+
+				std::regex numberRegex("[^\\d]*(\\d+)[^\\d]*$");
+				std::smatch match;
+
+				if (std::regex_match(fileName, match, numberRegex)) {
+					fileNumber = match[1];
+				}
+
 				for (auto& p : std::filesystem::directory_iterator(inFile.parent_path()))
 				{
+					if (p.is_regular_file()) {
+						std::string path_test = p.path().filename().string();
+						std::filesystem::path pathObj2(path_test);
 
-					std::string path_test = p.path().filename().string();
-					std::filesystem::path pathObj2(path_test);
+						std::string fileName2 = pathObj2.stem().string();
 
-					std::string fileName2 = pathObj2.stem().string();
-
-					/*const char* fileName2C = fileName2.c_str();
-					char texnumber3[128];
-					snprintf(texnumber3, 128, fileName2C);
-					g_nfn->NPAPI_DebugLogStr("File Load Name:\n");
-					g_nfn->NPAPI_DebugLogStr(texnumber3);
-					g_nfn->NPAPI_DebugLogStr("\n"); */
-
-					std::string fileNumber2 = "";
-					for (char c : fileName2) {
-						if (std::isdigit(c)) {
-							fileNumber2 += c;
+						std::string fileNumber2 = "";
+						if (std::regex_match(fileName2, match, numberRegex)) {
+							fileNumber2 = match[1];
 						}
-					}
 
-					// Remove any leading zeros
-					fileNumber2.erase(0, fileNumber2.find_first_not_of('0'));
+						if ((fileName == fileName2 && p.path().extension() == ".g1m") ||
+							(fileNumber != "" && fileNumber2!= "" && fileNumber == fileNumber2 && p.path().extension() == ".g1m"))
+						{
 
-					/*const char* fileNumber2C = fileNumber2.c_str();
-					char texnumber4[128];
-					snprintf(texnumber4, 128, fileNumber2C);
-					g_nfn->NPAPI_DebugLogStr("File Load Number:\n");
-					g_nfn->NPAPI_DebugLogStr(texnumber4);
-					g_nfn->NPAPI_DebugLogStr("\n"); */
+							g1mPaths.push_back(p.path().string());
+						} else
+						if ((fileName == fileName2 && p.path().extension() == ".g1t") ||
+							(fileNumber != "" && fileNumber2 != "" && fileNumber  == fileNumber2 && p.path().extension() == ".g1t"))
+						{
 
-					if ((fileName == fileName2 && p.path().extension() == ".g1m") ||
-						(fileNumber != "" && fileNumber == fileNumber2 && p.path().extension() == ".g1m"))
-					{
-						/*g_nfn->NPAPI_DebugLogStr("Matched G1M:\n");
-						g_nfn->NPAPI_DebugLogStr(texnumber1);
-						g_nfn->NPAPI_DebugLogStr("\n"); */
-
-						g1mPaths.push_back(p.path().string());
-					}
-					if ((fileName == fileName2 && p.path().extension() == ".g1t") ||
-						(fileNumber != "" && fileNumber == fileNumber2 && p.path().extension() == ".g1t"))
-					{
-
-						/*g_nfn->NPAPI_DebugLogStr("Matched G1T:\n");
-						g_nfn->NPAPI_DebugLogStr(texnumber1);
-						g_nfn->NPAPI_DebugLogStr("\n");*/
-
-						g1tPaths.push_back(p.path().string());
+							g1tPaths.push_back(p.path().string());
+						}
 					}
 				}
 			}
@@ -367,26 +326,26 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 			//for (auto& p : std::filesystem::recursive_directory_iterator(inFile.parent_path()))
 			if(bMerge)
 			{
-			for (auto& p : std::filesystem::directory_iterator(inFile.parent_path()))
-			{
-				if (p.path().extension() == ".g1m")
-					g1mPaths.push_back(p.path().string());
-				if (p.path().extension() == ".g1t" && !bMergeG1MOnly)
-					g1tPaths.push_back(p.path().string());
-				if (p.path().extension() == ".g1a" && !bMergeG1MOnly)
+				for (auto& p : std::filesystem::directory_iterator(inFile.parent_path()))
 				{
-					g1aPaths.push_back(p.path().string());
-					g1aFileNames.push_back(p.path().stem().string());
+					if (p.path().extension() == ".g1m")
+						g1mPaths.push_back(p.path().string());
+					if (p.path().extension() == ".g1t" && !bMergeG1MOnly)
+						g1tPaths.push_back(p.path().string());
+					if (p.path().extension() == ".g1a" && !bMergeG1MOnly)
+					{
+						g1aPaths.push_back(p.path().string());
+						g1aFileNames.push_back(p.path().stem().string());
+					}
+					if (p.path().extension() == ".g2a" && !bMergeG1MOnly)
+					{
+						g2aPaths.push_back(p.path().string());
+						g2aFileNames.push_back(p.path().stem().string());
+					}
+					if ((p.path().extension() == ".oid" || has_suffix(p.path().filename().string(), "Oid.bin")) && !bAlreadyHasOid)
+						oidPaths.push_back(p.path().string());
 				}
-				if (p.path().extension() == ".g2a" && !bMergeG1MOnly)
-				{
-					g2aPaths.push_back(p.path().string());
-					g2aFileNames.push_back(p.path().stem().string());
-				}
-				if ((p.path().extension() == ".oid" || has_suffix(p.path().filename().string(), "Oid.bin")) && !bAlreadyHasOid)
-					oidPaths.push_back(p.path().string());
 			}
-		}
 			
 		}
 		else
@@ -471,7 +430,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 		//Going through all the sections and adding the chunks
 		bHasParsedG1MS = false;
 		uint32_t chunkOffset = g1mHeader.firstChunkOffset;
-		for (auto i = 0; i < g1mHeader.chunkCount; i++)
+		for (uint32_t i = 0; i < g1mHeader.chunkCount; i++)
 		{
 			GResourceHeader<bBigEndian> header = reinterpret_cast<GResourceHeader<bBigEndian>*>(fb + chunkOffset);
 			switch (header.magic)
@@ -654,12 +613,12 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 		{
 			s.localIDToGlobalID[std::get<2>(data)] = std::get<1>(data);
 			s.globalIDToLocalID[std::get<1>(data)] = std::get<2>(data);
-			int result = s.globalIDToLocalID.erase(std::get<0>(data));
+			int result = int(s.globalIDToLocalID.erase(std::get<0>(data)));
 		}
 		skeletonLayer++;
 	}
 
-	uint32_t jointCount = globalIndices.size();
+	uint32_t jointCount = uint32_t(globalIndices.size());
 	
 	//Parsing all NUN chunks and getting the final joint count number
 	//NUNO
@@ -672,12 +631,12 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 	{
 		for (auto& nun1 : nun.Nuno1s)
 		{
-			jointCount += nun1.controlPoints.size();
+			jointCount += (uint32_t)nun1.controlPoints.size();
 		}
 
 		for (auto& nun3 : nun.Nuno3s)
 		{
-			jointCount += nun3.controlPoints.size();
+			jointCount += (uint32_t)nun3.controlPoints.size();
 		}
 	}
 
@@ -691,7 +650,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 	{
 		for (auto& nun1 : nun.Nunv1s)
 		{
-			jointCount += nun1.controlPoints.size();
+			jointCount += (uint32_t)nun1.controlPoints.size();
 		}
 	}
 
@@ -705,7 +664,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 	{
 		for (auto& nun1 : nun.Nuns1s)
 		{
-			jointCount += nun1.controlPoints.size();
+			jointCount += (uint32_t)nun1.controlPoints.size();
 		}
 	}
 
@@ -719,7 +678,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 	{
 		for (auto& soft1 : soft.Soft1s)
 		{
-			jointCount += soft1.softNodes.size();
+			jointCount += (uint32_t)soft1.softNodes.size();
 		}
 	}
 
@@ -802,7 +761,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 			}
 		}
 
-		rapi->rpgMultiplyBones(joints, globalIndices.size());
+		rapi->rpgMultiplyBones(joints, int(globalIndices.size()));
 
 		//NUNO chunks
 		for (auto i= 0; i< NUNOFileIDs.size(); i++) //Keep a reference to the ID for the NUNMap
@@ -820,7 +779,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 
 				//Prepare driverMeshes
 				mesh_t dMesh;
-				createDriverVertexBuffers(dMesh, nun1.controlPoints.size(), unpooledBufs, rapi);
+				createDriverVertexBuffers(dMesh, int(nun1.controlPoints.size()), unpooledBufs, rapi);
 				float* posB = (float*)dMesh.posBuffer.address;
 				uint16_t* bIB = (uint16_t*)dMesh.blendIndicesBuffer.address;
 				float* bWB = (float*)dMesh.blendWeightsBuffer.address;
@@ -911,7 +870,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 
 				//Prepare driverMeshes
 				mesh_t dMesh;
-				createDriverVertexBuffers(dMesh, nun3.controlPoints.size(), unpooledBufs, rapi);
+				createDriverVertexBuffers(dMesh, uint32_t(nun3.controlPoints.size()), unpooledBufs, rapi);
 				float* posB = (float*)dMesh.posBuffer.address;
 				uint16_t* bIB = (uint16_t*)dMesh.blendIndicesBuffer.address;
 				float* bWB = (float*)dMesh.blendWeightsBuffer.address;
@@ -993,7 +952,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 
 				//Prepare driverMeshes
 				mesh_t dMesh;
-				createDriverVertexBuffers(dMesh, nun1.controlPoints.size(), unpooledBufs, rapi);
+				createDriverVertexBuffers(dMesh, uint32_t(nun1.controlPoints.size()), unpooledBufs, rapi);
 				float* posB = (float*)dMesh.posBuffer.address;
 				uint16_t* bIB = (uint16_t*)dMesh.blendIndicesBuffer.address;
 				float* bWB = (float*)dMesh.blendWeightsBuffer.address;
@@ -1073,7 +1032,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 
 				//Prepare driverMeshes
 				mesh_t dMesh;		
-				createDriverVertexBuffers(dMesh, nun1.controlPoints.size(), unpooledBufs, rapi);
+				createDriverVertexBuffers(dMesh, uint32_t(nun1.controlPoints.size()), unpooledBufs, rapi);
 				float* posB = (float*)dMesh.posBuffer.address;
 				uint16_t* bIB = (uint16_t*)dMesh.blendIndicesBuffer.address;
 				float* bWB = (float*)dMesh.blendWeightsBuffer.address;
@@ -1178,7 +1137,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 	}
 	
 	if (bDisableNUNNodes)
-		jointIndex = globalIndices.size();
+		jointIndex = uint32_t(globalIndices.size());
 
 	//Skel names if relevant
 	if (joints > 0)
@@ -1247,8 +1206,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 	CArrayList<noesisMaterial_t*> matList;
 	for (auto i = 0; i < g1tFileBuffers.size(); i++)
 	{	
-		g1tTextureOffsets.push_back(textureList.Num());
-		G1T<bBigEndian>(g1tFileBuffers[i], g1tFileLengths[i], textureList, rapi);		
+		G1TG_TEXTURE<bBigEndian>(g1tFileBuffers[i], g1tFileLengths[i], textureList, rapi);
 	}
 
 	//Processing the geometry data
@@ -2127,7 +2085,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 	rapi->rpgClearBufferBinds();
 	rapi->rpgSetBoneMap(nullptr);
 	uint8_t dvmIndex = 0;
-	/*if (!bDisableNUNNodes)
+	if (!bDisableNUNNodes)
 	{
 		for (auto& dvM : driverMeshes)
 		{
@@ -2152,7 +2110,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 			rapi->rpgCommitTriangles(dvM.indexBuffer.address, dvM.indexBuffer.dataType, dvM.indexBuffer.indexCount, dvM.indexBuffer.primType, true);
 			dvmIndex += 1;
 		}
-	}*/
+	}
 
 	//Joints and anims
 	if (joints)
@@ -2182,7 +2140,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 			rapi->rpgSetExData_Bones(joints, jointIndex);
 			BYTE* dummyPos = (BYTE*)rapi->Noesis_PooledAlloc(sizeof(float) * jointIndex);
 			float* dst = (float*)dummyPos;
-			for (int i = 0; i < jointIndex; i++)
+			for (int i = 0; i < int(jointIndex); i++)
 			{
 				float src[3] = { 0, 0, 0 };
 				float tmp[3];
@@ -2197,7 +2155,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 
 			BYTE* dummyTri = (BYTE*)rapi->Noesis_PooledAlloc(sizeof(uint16_t) * jointIndex);
 			uint16_t* dst2 = (uint16_t*)dummyTri;
-			for (int i = 0; i < jointIndex; i++)
+			for (int i = 0; i < int(jointIndex); i++)
 			{
 				dst2[3 * i] = i;
 				dst2[3 * i + 1] = i;
@@ -2259,7 +2217,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 	rapi->rpgDestroyContext(ctx);
 	if(!bNoTextureRename)
 		rapi->Noesis_ProcessCommands("-texnorepfn"); //avoid renaming of the first texture
-	rapi->SetPreviewAnimSpeed(framerate);
+	rapi->SetPreviewAnimSpeed(float(framerate));
 
 	//Freeing buffers
 	for (void* buf : unpooledBufs)
@@ -2316,8 +2274,8 @@ bool NPAPI_InitLocal(void)
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
 	getAnimations(optHandle);
 
-	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Load matching g1t file with model"), setMatch, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Loads matching gt1 to model file in same folder."));
+	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Load matching g1t file with g1m"), setMatch, nullptr);
+	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Loads matching gt1 to g1m filename (or number) in same folder."));
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
 	getMatch(optHandle);
 
@@ -2352,7 +2310,7 @@ bool NPAPI_InitLocal(void)
 	getDisableNUNNodes(optHandle);
 
 	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("No first texture rename"), setNoTextureRename, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Does not rename the first texture"));
+	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Does not rename the first texture."));
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
 	getNoTextureRename(optHandle);
 
@@ -2362,42 +2320,27 @@ bool NPAPI_InitLocal(void)
 	getEnableNUNAutoRig(optHandle);
 
 	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Load all LODs for meshes"), setEnableLOD, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Load all LODs"));
+	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Load all LODs."));
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
 	getEnableLOD(optHandle);
 
-	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Halve height of texture"), setHalveHeight, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Halve height of texture"));
+	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Generate all texture planes"), setPlanes, nullptr);
+	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Slices image for panes (may cause display issues)."));
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
-	getHalveHeight(optHandle);
+	getPlanes(optHandle);
 
-	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Halve width of texture"), setHalveWidth, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Halve width of texture"));
+	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Flip image vertically"), setFlipVertically, nullptr);
+	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("For when an images are backwards."));
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
-	getHalveWidth(optHandle);
+	getEnableLOD(optHandle);
 
-	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Thirds height of texture"), setThirdHeight, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Thirds height of texture"));
+	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Flip image horizontally"), setFlipHorizontally, nullptr);
+	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("For when an images are upside down"));
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
-	getThirdHeight(optHandle);
+	getEnableLOD(optHandle);
 
-	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Thirds width of texture"), setThirdWidth, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Thirds width of texture"));
-	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
-	getThirdWidth(optHandle);
-
-	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Two thirds height of texture"), setTwoThirdHeight, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Two thirds height of texture"));
-	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
-	getTwoThirdHeight(optHandle);
-
-	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Two thirds width of texture"), setTwoThirdWidth, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Two thirds width of texture"));
-	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
-	getTwoThirdWidth(optHandle);
-
-	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Show debug log"), setDebugLog, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Show debug log"));
+	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Enable debug log"), setDebugLog, nullptr);
+	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Enable debug log"));
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
 	getDebugLog(optHandle);
 
@@ -2433,8 +2376,6 @@ bool NPAPI_InitLocal(void)
 	g_nfn->NPAPI_SetTypeHandler_TypeCheck(fMHandle, CheckMap<false>);
 	g_nfn->NPAPI_SetTypeHandler_LoadModel(fMHandle, LoadMap<false>);
 	
-	/*if (!g_nfn->NPAPI_DebugLogIsOpen())
-		g_nfn->NPAPI_PopupDebugLog(0);*/
 	return true;
 }
 

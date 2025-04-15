@@ -231,117 +231,60 @@ int setEnableLOD(int handle, void* userData)
 	return 1;
 }
 
-//bhHeight
-void getHalveHeight(int handle)
+//bPlanes
+void getPlanes(int handle)
 {
 	BYTE buffer[1];
-	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::halveHeight"), buffer, 1))
+	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::planes"), buffer, 1))
 	{
-		bhHeight = buffer[0] == 1;
+		bPlanes = buffer[0] == 1;
 	}
-	g_nfn->NPAPI_CheckToolMenuItem(handle, bhHeight);
+	g_nfn->NPAPI_CheckToolMenuItem(handle, bPlanes);
 }
-int setHalveHeight(int handle, void* userData)
+int setPlanes(int handle, void* userData)
 {
-	bhHeight = !bhHeight;
-	BYTE buffer[1] = { bhHeight };
-	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::halveHeight"), buffer, 1);
-	g_nfn->NPAPI_CheckToolMenuItem(handle, bhHeight);
+	bPlanes = !bPlanes;
+	BYTE buffer[1] = { bPlanes };
+	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::planes"), buffer, 1);
+	g_nfn->NPAPI_CheckToolMenuItem(handle, bPlanes);
 	return 1;
 }
 
-//bhWidth
-void getHalveWidth(int handle)
+//bFlipVertically
+void getFlipVertically(int handle)
 {
 	BYTE buffer[1];
-	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::halveWidth"), buffer, 1))
+	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::flipVertically"), buffer, 1))
 	{
-		bhWidth = buffer[0] == 1;
+		bFlipVertically = buffer[0] == 1;
 	}
-	g_nfn->NPAPI_CheckToolMenuItem(handle, bhWidth);
+	g_nfn->NPAPI_CheckToolMenuItem(handle, bFlipVertically);
 }
-int setHalveWidth(int handle, void* userData)
+int setFlipVertically(int handle, void* userData)
 {
-	bhWidth = !bhWidth;
-	BYTE buffer[1] = { bhWidth };
-	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::halveWidth"), buffer, 1);
-	g_nfn->NPAPI_CheckToolMenuItem(handle, bhWidth);
+	bFlipVertically = !bFlipVertically;
+	BYTE buffer[1] = { bFlipVertically };
+	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::flipVertically"), buffer, 1);
+	g_nfn->NPAPI_CheckToolMenuItem(handle, bFlipVertically);
 	return 1;
 }
 
-//btHeight
-void getThirdHeight(int handle)
+//bFlipHorizontally
+void getFlipHorizontally(int handle)
 {
 	BYTE buffer[1];
-	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::thirdHeight"), buffer, 1))
+	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::flipHorizontally"), buffer, 1))
 	{
-		btHeight = buffer[0] == 1;
+		bFlipHorizontally = buffer[0] == 1;
 	}
-	g_nfn->NPAPI_CheckToolMenuItem(handle, btHeight);
+	g_nfn->NPAPI_CheckToolMenuItem(handle, bFlipHorizontally);
 }
-int setThirdHeight(int handle, void* userData)
+int setFlipHorizontally(int handle, void* userData)
 {
-	btHeight = !btHeight;
-	BYTE buffer[1] = { btHeight };
-	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::thirdHeight"), buffer, 1);
-	g_nfn->NPAPI_CheckToolMenuItem(handle, btHeight);
-	return 1;
-}
-
-//bttWidth
-void getThirdWidth(int handle)
-{
-	BYTE buffer[1];
-	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::thirdWidth"), buffer, 1))
-	{
-		btWidth = buffer[0] == 1;
-	}
-	g_nfn->NPAPI_CheckToolMenuItem(handle, btWidth);
-}
-int setThirdWidth(int handle, void* userData)
-{
-	btWidth = !btWidth;
-	BYTE buffer[1] = { btWidth };
-	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::thirdWidth"), buffer, 1);
-	g_nfn->NPAPI_CheckToolMenuItem(handle, btWidth);
-	return 1;
-}
-
-//bttHeight
-void getTwoThirdHeight(int handle)
-{
-	BYTE buffer[1];
-	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::twoThirdHeight"), buffer, 1))
-	{
-		bttHeight = buffer[0] == 1;
-	}
-	g_nfn->NPAPI_CheckToolMenuItem(handle, bttHeight);
-}
-int setTwoThirdHeight(int handle, void* userData)
-{
-	bttHeight = !bttHeight;
-	BYTE buffer[1] = { bttHeight };
-	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::twoThirdHeight"), buffer, 1);
-	g_nfn->NPAPI_CheckToolMenuItem(handle, bttHeight);
-	return 1;
-}
-
-//btWidth
-void getTwoThirdWidth(int handle)
-{
-	BYTE buffer[1];
-	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::thirdWidth"), buffer, 1))
-	{
-		bttWidth = buffer[0] == 1;
-	}
-	g_nfn->NPAPI_CheckToolMenuItem(handle, bttWidth);
-}
-int setTwoThirdWidth(int handle, void* userData)
-{
-	bttWidth = !bttWidth;
-	BYTE buffer[1] = { bttWidth };
-	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::thirdWidth"), buffer, 1);
-	g_nfn->NPAPI_CheckToolMenuItem(handle, bttWidth);
+	bFlipHorizontally = !bFlipHorizontally;
+	BYTE buffer[1] = { bFlipHorizontally };
+	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::flipHorizontally"), buffer, 1);
+	g_nfn->NPAPI_CheckToolMenuItem(handle, bFlipHorizontally);
 	return 1;
 }
 
@@ -354,6 +297,7 @@ void getDebugLog(int handle)
 		bDebugLog = buffer[0] == 1;
 	}
 	g_nfn->NPAPI_CheckToolMenuItem(handle, bDebugLog);
+	if (bDebugLog && !g_nfn->NPAPI_DebugLogIsOpen()) g_nfn->NPAPI_PopupDebugLog(0);
 }
 int setDebugLog(int handle, void* userData)
 {
@@ -361,6 +305,17 @@ int setDebugLog(int handle, void* userData)
 	BYTE buffer[1] = { bDebugLog };
 	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::debug"), buffer, 1);
 	g_nfn->NPAPI_CheckToolMenuItem(handle, bDebugLog);
+	if (bDebugLog) {
+		if (!g_nfn->NPAPI_DebugLogIsOpen())
+		{
+			g_nfn->NPAPI_PopupDebugLog(0);
+		}
+		g_nfn->NPAPI_DebugLogStr("G1M debugging enabled.\n");
+	}
+	else 
+	{
+		g_nfn->NPAPI_DebugLogStr("G1M debugging disabled.\n");
+	}
 	return 1;
 }
 
@@ -374,7 +329,7 @@ bool g1tConsoleHandler(const char* arg, unsigned char* store, int storeSize)
 	}
 	else
 	{
-		strcpy(g1tConsolePath, "");
+		strcpy_s(g1tConsolePath, "");
 		return false;
 	}
 
@@ -383,7 +338,7 @@ bool g1tConsoleHandler(const char* arg, unsigned char* store, int storeSize)
 void g1tConsoleReset(unsigned char* store, int storeSize)
 {
 	*store = 1;
-	strcpy(g1tConsolePath, "");
+	strcpy_s(g1tConsolePath, "");
 }
 
 #endif // !G1MOPT_H

@@ -79,8 +79,6 @@ struct G1MHeader
 	uint32_t reserved1;
 	uint32_t chunkCount;
 
-	G1MHeader();
-
 	G1MHeader(G1MHeader*ptr) : G1MHeader(*ptr)
 	{
 		if (bBigEndian)
