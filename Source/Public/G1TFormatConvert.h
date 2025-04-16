@@ -3518,8 +3518,7 @@ void GenerateMipOffsets(GX2Surface* tex, Gx2SurfaceIn* pIn, Gx2SurfaceOut* pOut)
     uint32_t imageSize = surfOut.surfSize;
     uint32_t mipSize = 0;
 
-    //List<uint> mipOffsets = new List<uint>();
-    for (int mipLevel = 0; mipLevel < tex->numMips; mipLevel++)
+    for (uint32_t mipLevel = 0; mipLevel < tex->numMips; mipLevel++)
     {
         if (mipLevel != 0)
         {
@@ -3530,7 +3529,6 @@ void GenerateMipOffsets(GX2Surface* tex, Gx2SurfaceIn* pIn, Gx2SurfaceOut* pOut)
             else
                 tex->mipOffset[mipLevel] = mipSize;
 
-            //byte[] dataAlignBytes = new byte[RoundUp(mipSize, surfOut.baseAlign) - mipSize];
             mipSize += (uint32_t)(surfOut.surfSize + RoundUp(mipSize, surfOut.baseAlign) - mipSize);
         }
     }

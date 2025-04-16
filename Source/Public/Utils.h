@@ -652,14 +652,14 @@ void flip_horizontally(BYTE* pixels, const size_t width, const size_t height, co
 
 #define LOG_BUFFER_SIZE 256
 
-// Safe formatted logger
+// Safe formatted logger (256 max string)
 void LogDebug(const char* format, ...)
 {
 	char msgBuffer[LOG_BUFFER_SIZE] = {};
 	va_list args;
 
 	va_start(args, format);
-	vsprintf_s(msgBuffer, 256, format, args);
+	vsprintf_s(msgBuffer, LOG_BUFFER_SIZE, format, args);
 	va_end(args);
 
 	g_nfn->NPAPI_DebugLogStr(msgBuffer);

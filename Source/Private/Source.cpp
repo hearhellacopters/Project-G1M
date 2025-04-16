@@ -9,6 +9,8 @@
 #include <set>
 #include <array>
 #include <regex>
+#include <fcntl.h>
+#include <io.h>
 
 #include "../Public/G1M.h"
 #include "../Public/G1T.h"
@@ -48,7 +50,8 @@ bool bNUNO5HasSubsets = false; //Temporary hack to prevent subsets from making a
 
 #include "../Public/Options.h"
 #include "../Public/G1TFormatStr.h" // here for debugging
-#include "../Public/G1tFormatConvert.h" // here for debugging
+#include "../Public/G1TFormatConvert.h" // here for debugging
+#include "../Public/Archives.h"
 
 template<bool bBigEndian>
 bool CheckModel(BYTE* fileBuffer, int bufferLen, noeRAPI_t* rapi)
@@ -77,6 +80,20 @@ bool CheckMap(BYTE* fileBuffer, int bufferLen, noeRAPI_t* rapi)
 	if (bufferLen < 36)
 		return 0;
 	return 1;
+}
+
+template<bool bBigEndian>
+bool CheckDZArchive(BYTE* fileBuffer, int bufferLen, noeRAPI_t* rapi)
+{
+	uint8_t ed = *(uint8_t*)(fileBuffer);
+	return !(bBigEndian ^ (ed == 0x0 ? true : false));
+}
+
+template<bool bBigEndian>
+bool CheckGZArchive(BYTE* fileBuffer, int bufferLen, noeRAPI_t* rapi)
+{
+	uint8_t ed = *(uint8_t*)(fileBuffer + 1);
+	return !(bBigEndian ^ (ed == 0x0 ? true : false));
 }
 
 template<bool bBigEndian>
@@ -130,6 +147,57 @@ noesisModel_t* LoadMap(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAPI_t* 
 	rapi->Noesis_UnpooledFree(datatableBuf);
 	datatableBuf = nullptr;
 	return mdlResult;
+}
+
+//when using the stream archive handler, you are responsible for managing the file handle yourself.
+template<bool bBigEndian>
+bool LoadDZArchive(wchar_t* filename, __int64 len, bool justChecking, noeRAPI_t* rapi)
+{
+
+	if (len < 128)
+	{
+		return false;
+	}
+
+	FILE* f = NULL;
+
+	_wfopen_s(&f, filename, L"rb");
+
+	if (!f)
+	{
+		return false;
+	}
+
+	bool r = HandleArchiveDZ<bBigEndian>(f, len, justChecking, rapi);
+
+	fclose(f);
+
+	return r;
+}
+
+//when using the stream archive handler, you are responsible for managing the file handle yourself.
+template<bool bBigEndian>
+bool LoadGZArchive(wchar_t* filename, __int64 len, bool justChecking, noeRAPI_t* rapi)
+{
+	if (len < 128)
+	{
+		return false;
+	}
+
+	FILE* f = NULL;
+
+	_wfopen_s(&f, filename, L"rb");
+
+	if (!f)
+	{
+		return false;
+	}
+
+	bool r = HandleArchiveGZ<bBigEndian>(f, len, justChecking, rapi);
+
+	fclose(f);
+
+	return r;
 }
 
 template<bool bBigEndian>
@@ -2259,7 +2327,19 @@ bool NPAPI_InitLocal(void)
 	int fMHandle = g_nfn->NPAPI_Register((char*)"Map file (Little Endian)", (char*) ".objd");
 	if (fMHandle < 0)
 		return false;
-
+	//Archive
+	int fDZHandle = g_nfn->NPAPI_Register((char*)"TK deflated file (Little Endian)", (char*)".dz");
+	if (fDZHandle < 0)
+		return false;
+	int fDZHandleBE = g_nfn->NPAPI_Register((char*)"TK deflated file (Big Endian)", (char*)".dz");
+	if (fDZHandleBE < 0)
+		return false;
+	int fGZHandle = g_nfn->NPAPI_Register((char*)"TK gziped file (Little Endian)", (char*)".gz");
+	if (fGZHandle < 0)
+		return false;
+	int fGZHandleBE = g_nfn->NPAPI_Register((char*)"TK gziped file (Big Endian)", (char*)".gz");
+	if (fGZHandleBE < 0)
+		return false;
 
 
 	//Options
@@ -2375,7 +2455,17 @@ bool NPAPI_InitLocal(void)
 	//Maps
 	g_nfn->NPAPI_SetTypeHandler_TypeCheck(fMHandle, CheckMap<false>);
 	g_nfn->NPAPI_SetTypeHandler_LoadModel(fMHandle, LoadMap<false>);
-	
+
+	//Archives
+	g_nfn->NPAPI_SetTypeHandler_TypeCheck(       fDZHandle,   CheckDZArchive<false>);
+	g_nfn->NPAPI_SetTypeHandler_ExtractArcStream(fDZHandle,   LoadDZArchive<false>);
+	g_nfn->NPAPI_SetTypeHandler_TypeCheck(       fDZHandleBE, CheckDZArchive<true>);
+	g_nfn->NPAPI_SetTypeHandler_ExtractArcStream(fDZHandleBE, LoadDZArchive<true>);
+	g_nfn->NPAPI_SetTypeHandler_TypeCheck(       fGZHandle,   CheckGZArchive<false>);
+	g_nfn->NPAPI_SetTypeHandler_ExtractArcStream(fGZHandle,   LoadGZArchive<false>);
+	g_nfn->NPAPI_SetTypeHandler_TypeCheck(       fGZHandleBE, CheckGZArchive<true>);
+	g_nfn->NPAPI_SetTypeHandler_ExtractArcStream(fGZHandleBE, LoadGZArchive<true>);
+
 	return true;
 }
 

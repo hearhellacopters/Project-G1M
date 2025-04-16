@@ -39,6 +39,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Public\Archives.h" />
     <ClInclude Include="Source\Public\G1A.h" />
     <ClInclude Include="Source\Public\G1M.h" />
     <ClInclude Include="Source\Public\G1M\G1MG.h" />
