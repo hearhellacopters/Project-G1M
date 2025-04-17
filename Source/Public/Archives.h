@@ -100,14 +100,16 @@ bool HandleArchiveDZ(FILE* f, __int64 fileLen, bool justChecking, noeRAPI_t* rap
 		}
 		else
 		{
-			// not compressed, just copy
-			BYTE* zipChunk = (BYTE*)rapi->Noesis_UnpooledAlloc(zipSize);
+			// not compressed, just copy full chunk
+			offset -= 4; _fseeki64(f, offset, SEEK_SET);
 
-			fread(zipChunk, 1, zipSize, f); offset += zipSize;
+			BYTE* zipChunk = (BYTE*)rapi->Noesis_UnpooledAlloc(chunkSize);
 
-			memcpy(rawData + unzippedOffset, zipChunk, zipSize);
+			fread(zipChunk, 1, chunkSize, f); offset += chunkSize;
 
-			unzippedOffset += zipSize;
+			memcpy(rawData + unzippedOffset, zipChunk, chunkSize);
+
+			unzippedOffset += chunkSize;
 
 			rapi->Noesis_UnpooledFree(zipChunk);
 		}
@@ -201,14 +203,16 @@ bool HandleArchiveGZ(FILE* f, __int64 fileLen, bool justChecking, noeRAPI_t* rap
 		}
 		else
 		{
-			// not compressed, just copy
-			BYTE* zipChunk = (BYTE*)rapi->Noesis_UnpooledAlloc(zipSize);
+			// not compressed, just copy full chunk
+			offset -= 4; _fseeki64(f, offset, SEEK_SET);
 
-			fread(zipChunk, 1, zipSize, f); offset += zipSize;
+			BYTE* zipChunk = (BYTE*)rapi->Noesis_UnpooledAlloc(chunkSize);
 
-			memcpy(rawData + unzippedOffset, zipChunk, zipSize);
+			fread(zipChunk, 1, chunkSize, f); offset += chunkSize;
 
-			unzippedOffset += zipSize;
+			memcpy(rawData + unzippedOffset, zipChunk, chunkSize);
+
+			unzippedOffset += chunkSize;
 
 			rapi->Noesis_UnpooledFree(zipChunk);
 		}
@@ -219,7 +223,7 @@ bool HandleArchiveGZ(FILE* f, __int64 fileLen, bool justChecking, noeRAPI_t* rap
 
 	std::filesystem::path pathObj(inFile);
 
-	std::string fileName = pathObj.stem().string(); // should drop the .dz
+	std::string fileName = pathObj.stem().string(); // should drop the .gz
 
 	//write it out
 	rapi->LogOutput("Writing '%s'.\n", fileName.c_str());
