@@ -26,6 +26,9 @@
 const char* g_pPluginName = "ProjectG1M";
 const char* g_pPluginDesc = "G1M Noesis plugin";
 
+// For debug tracking
+#define PLUGIN_VERSON "1.9.1"
+
 //Options
 bool bMerge = false;
 bool bMergeG1MOnly = false;

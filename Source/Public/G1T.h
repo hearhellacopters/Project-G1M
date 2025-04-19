@@ -2228,50 +2228,17 @@ struct G1TG_TEXTURE
 				if (bCompressedFormat)
 				{
 					LogDebug("\tbCompressedFormat:\t%s\n", bCompressedFormat ? "true" : "false");
-					if (fourccFormat != -1)
-					{
-						LogDebug("\tfourccFormat:\t\t%c%c%c%c\n", fourccFormat & 0xFF, (fourccFormat >> 8) & 0xFF, (fourccFormat >> 16) & 0xFF, (fourccFormat >> 24) & 0xFF);
-					}
-					if (bIsETC1)
-					{
-						LogDebug("\tbIsETC1:\t\t\t%s\n", bIsETC1 ? "true" : "false");
-					}
-					if (bPICAETC)
-					{
-						LogDebug("\tbPICAETC:\t\t%s\n", bPICAETC ? "true" : "false");
-					}
-					if (bIsETC2)
-					{
-						LogDebug("\tbIsETC2:\t\t\t%s\n", bIsETC2 ? "true" : "false");
-					}
-					if (bPalette4)
-					{
-						LogDebug("\tbPalette4:\t\t%s\n", bPalette4 ? "true" : "false");
-					}
-					if (bPalette8)
-					{
-						LogDebug("\tbPalette8:\t\t%s\n", bPalette8 ? "true" : "false");
-					}
-					if (bPalette14) 
-					{
-						LogDebug("\tbPalette14:\t\t%s\n", bPalette14 ? "true" : "false");
-					}
-					if (bIsPVRTC)
-					{
-						LogDebug("\tbIsPVRTC:\t\t%s\n", bIsPVRTC ? "true" : "false");
-					}
-					if (bIsASTC)
-					{
-						LogDebug("\tbIsASTC:\t\t\t%s\n\n", bIsASTC ? "true" : "false");
-					}
-					if (bHasAlphaAtlas)
-					{
-						LogDebug("\tbHasAlphaAtlas:\t\t%s\n", bHasAlphaAtlas ? "true" : "false");
-					}
-					if (b3DSAlpha)
-					{
-						LogDebug("\tb3DSAlpha:\t\t%s\n", b3DSAlpha ? "true" : "false");
-					}
+					if (fourccFormat != -1) LogDebug("\tfourccFormat:\t\t%c%c%c%c\n", fourccFormat & 0xFF, (fourccFormat >> 8) & 0xFF, (fourccFormat >> 16) & 0xFF, (fourccFormat >> 24) & 0xFF);
+					if (bIsETC1)            LogDebug("\tbIsETC1:\t\t\t%s\n", bIsETC1 ? "true" : "false");
+					if (bPICAETC)           LogDebug("\tbPICAETC:\t\t%s\n", bPICAETC ? "true" : "false");
+					if (bIsETC2)            LogDebug("\tbIsETC2:\t\t\t%s\n", bIsETC2 ? "true" : "false");
+					if (bPalette4)          LogDebug("\tbPalette4:\t\t%s\n", bPalette4 ? "true" : "false");
+					if (bPalette8)          LogDebug("\tbPalette8:\t\t%s\n", bPalette8 ? "true" : "false");
+					if (bPalette14)         LogDebug("\tbPalette14:\t\t%s\n", bPalette14 ? "true" : "false");
+					if (bIsPVRTC)           LogDebug("\tbIsPVRTC:\t\t%s\n", bIsPVRTC ? "true" : "false");
+					if (bIsASTC)            LogDebug("\tbIsASTC:\t\t\t%s\n\n", bIsASTC ? "true" : "false");
+					if (bHasAlphaAtlas)     LogDebug("\tbHasAlphaAtlas:\t\t%s\n", bHasAlphaAtlas ? "true" : "false");
+					if (b3DSAlpha)          LogDebug("\tb3DSAlpha:\t\t%s\n", b3DSAlpha ? "true" : "false");
 					LogDebug("\tblockDim:\t\t\t%dx%d\n", blockWidth, blockHeight);
 					LogDebug("\tblockByteSize:\t\t%d\n", minBytes);
 				}
@@ -2283,70 +2250,22 @@ struct G1TG_TEXTURE
 				LogDebug("\tminBytes:\t\t\t%d\n", minBytes);
 				LogDebug("\tfirstMipSize:\t\t%d\n", int(firstMipSize));
 				LogDebug("\ttotalTexBufferLen:\t\t%d\n", int(totalTexBufferLen));
-				if (bIsUNorm)
-				{
-					LogDebug("\tbIsUNorm:\t\t%s\n", bIsUNorm ? "true" : "false");
-				}
-				if (bNormalMap)
-				{
-					LogDebug("\tbNormalMap:\t\t%s\n", bNormalMap ? "true" : "false");
-				}
-				if (bNormalWithAlpha)
-				{
-					LogDebug("\tbNormalWithAlpha:\t\t%s\n", bNormalWithAlpha ? "true" : "false");
-				}
-				if(bNormalized)
-				{
-					LogDebug("\tbNormalize:\t\t%s\n", bNormalized ? "true" : "false");
-				}	
-				if (bSwizzled)
-				{
-					LogDebug("\tbSwizzled:\t\t%s\n", bSwizzled ? "true" : "false");
-				}
-				if (bSigned)
-				{
-					LogDebug("\tbSigned:\t\t\t%s\n", bSigned ? "true" : "false");
-				}		
-				if (bNeedsX360EndianSwap)
-				{
-					LogDebug("\tbNeedsX360EndianSwap:\t%s\n", bNeedsX360EndianSwap ? "true" : "false");
-				}
-				if (bFloat)
-				{
-					LogDebug("\tbFloat:\t\t\t%s\n", bFloat ? "true" : "false");
-				}
-				if (bHalfFloat)
-				{
-					LogDebug("\tbHalfFloat:\t\t%s\n", bHalfFloat ? "true" : "false");
-				}
-				if (bIsDepth)
-				{
-					LogDebug("\tbIsDepth:\t\t%s\n", bIsDepth ? "true" : "false");
-				}
-				if (bD16Convert)
-				{
-					LogDebug("\tbD16Convert:\t\t%s\n", bD16Convert ? "true" : "false");
-				}
-				if (bD32Convert)
-				{
-					LogDebug("\tbD32Convert:\t\t%s\n", bD32Convert ? "true" : "false");
-				}
-				if (bD32FloatConvert)
-				{
-					LogDebug("\tbD32FloatConvert:\t\t%s\n", bD32FloatConvert ? "true" : "false");
-				}
-				if (bD24_8Convert)
-				{
-					LogDebug("\tbD24_8Convert:\t\t%s\n", bD24_8Convert ? "true" : "false");
-				}
-				if (bConvert10BitFloat)
-				{
-					LogDebug("\tbConvert10BitFloat:\t%s\n", bConvert10BitFloat ? "true" : "false");
-				}
-				if (bConvert11Bit10BitFloat)
-				{
-					LogDebug("\tbConvert11Bit10BitFloat:\t%s\n", bConvert11Bit10BitFloat ? "true" : "false");
-				}					
+				if (bIsUNorm)                LogDebug("\tbIsUNorm:\t\t%s\n", bIsUNorm ? "true" : "false");
+				if (bNormalMap)              LogDebug("\tbNormalMap:\t\t%s\n", bNormalMap ? "true" : "false");
+				if (bNormalWithAlpha)        LogDebug("\tbNormalWithAlpha:\t\t%s\n", bNormalWithAlpha ? "true" : "false");
+				if(bNormalized)              LogDebug("\tbNormalize:\t\t%s\n", bNormalized ? "true" : "false");
+				if (bSwizzled)               LogDebug("\tbSwizzled:\t\t%s\n", bSwizzled ? "true" : "false");
+				if (bSigned)                 LogDebug("\tbSigned:\t\t\t%s\n", bSigned ? "true" : "false");	
+				if (bNeedsX360EndianSwap)    LogDebug("\tbNeedsX360EndianSwap:\t%s\n", bNeedsX360EndianSwap ? "true" : "false");
+				if (bFloat)                  LogDebug("\tbFloat:\t\t\t%s\n", bFloat ? "true" : "false");
+				if (bHalfFloat)              LogDebug("\tbHalfFloat:\t\t%s\n", bHalfFloat ? "true" : "false");
+				if (bIsDepth)                LogDebug("\tbIsDepth:\t\t%s\n", bIsDepth ? "true" : "false");
+				if (bD16Convert)             LogDebug("\tbD16Convert:\t\t%s\n", bD16Convert ? "true" : "false");
+				if (bD32Convert)             LogDebug("\tbD32Convert:\t\t%s\n", bD32Convert ? "true" : "false");
+				if (bD32FloatConvert)        LogDebug("\tbD32FloatConvert:\t\t%s\n", bD32FloatConvert ? "true" : "false");
+				if (bD24_8Convert)           LogDebug("\tbD24_8Convert:\t\t%s\n", bD24_8Convert ? "true" : "false");
+				if (bConvert10BitFloat)      LogDebug("\tbConvert10BitFloat:\t%s\n", bConvert10BitFloat ? "true" : "false");
+				if (bConvert11Bit10BitFloat) LogDebug("\tbConvert11Bit10BitFloat:\t%s\n", bConvert11Bit10BitFloat ? "true" : "false");				
 			}
 
 			///////////////////////////////

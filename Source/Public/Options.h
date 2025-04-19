@@ -298,6 +298,10 @@ void getDebugLog(int handle)
 	}
 	g_nfn->NPAPI_CheckToolMenuItem(handle, bDebugLog);
 	if (bDebugLog && !g_nfn->NPAPI_DebugLogIsOpen()) g_nfn->NPAPI_PopupDebugLog(0);
+	if (bDebugLog) 
+	{
+		LogDebug("G1M v%s debugging enabled.\n", PLUGIN_VERSON);
+	}
 }
 int setDebugLog(int handle, void* userData)
 {
@@ -310,11 +314,11 @@ int setDebugLog(int handle, void* userData)
 		{
 			g_nfn->NPAPI_PopupDebugLog(0);
 		}
-		g_nfn->NPAPI_DebugLogStr("G1M debugging enabled.\n");
+		LogDebug("G1M v%s debugging enabled.\n", PLUGIN_VERSON);
 	}
 	else 
 	{
-		g_nfn->NPAPI_DebugLogStr("G1M debugging disabled.\n");
+		LogDebug("G1M v%s debugging enabled.\n", PLUGIN_VERSON);
 	}
 	return 1;
 }
