@@ -11,8 +11,14 @@
 #include <regex>
 #include <fcntl.h>
 #include <io.h>
+#define __STDC_WANT_LIB_EXT1__ 1
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
 #include "../Public/G1M.h"
+#include "../Public/G1TL.h"
 #include "../Public/G1T.h"
 #include "../Public/KHM.h"
 #include "../Public/Utils.h"
@@ -27,7 +33,7 @@ const char* g_pPluginName = "ProjectG1M";
 const char* g_pPluginDesc = "G1M Noesis plugin";
 
 // For debug tracking
-#define PLUGIN_VERSON "1.9.1"
+#define PLUGIN_VERSON "1.9.2"
 
 //Options
 bool bMerge = false;
@@ -43,18 +49,20 @@ bool bNoTextureRename = false;
 char g1tConsolePath[MAX_NOESIS_PATH];
 bool bEnableNUNAutoRig = true;
 bool bLoadAllLODs = false;
-bool bPlanes = false;
+bool bLayers = false;
 bool bFlipVertically = false;
 bool bFlipHorizontally = false;
+bool bG1EMSplitMeshes = false;
 bool bDebugLog = false;
 
 bool bIsNUNO5Global = false; //As of now I'm not sure how this chunk works when paired with other NUNO5 so I'm adding a quick and dirty option until I discover more.
 bool bNUNO5HasSubsets = false; //Temporary hack to prevent subsets from making anchored cloth to crash
 
 #include "../Public/Options.h"
-#include "../Public/G1TFormatStr.h" // here for debugging
 #include "../Public/G1TFormatConvert.h" // here for debugging
+#include "../Public/G1TFormatStr.h" // here for debugging
 #include "../Public/Archives.h"
+#include "../Public/G1EM.h"
 
 template<bool bBigEndian>
 bool CheckModel(BYTE* fileBuffer, int bufferLen, noeRAPI_t* rapi)
@@ -99,58 +107,6 @@ bool CheckGZArchive(BYTE* fileBuffer, int bufferLen, noeRAPI_t* rapi)
 	return !(bBigEndian ^ (ed == 0x0 ? true : false));
 }
 
-template<bool bBigEndian>
-bool LoadTexture(BYTE* fileBuffer, int bufferLen, CArrayList<noesisTex_t*>& noeTex, noeRAPI_t* rapi)
-{
-	G1TG_TEXTURE<bBigEndian>(fileBuffer, bufferLen, noeTex, rapi);
-	if(!bNoTextureRename)
-		rapi->Noesis_ProcessCommands("-texnorepfn"); //avoid renaming of the first texture
-	return 1;
-}
-
-template<bool bBigEndian>
-bool LoadHMTexture(BYTE* fileBuffer, int bufferLen, CArrayList<noesisTex_t*>& noeTex, noeRAPI_t* rapi)
-{
-	KHM<bBigEndian>(fileBuffer, bufferLen, noeTex, rapi);
-	if (!bNoTextureRename)
-		rapi->Noesis_ProcessCommands("-texnorepfn"); //avoid renaming of the first texture
-	return 1;
-}
-
-template<bool bBigEndian>
-noesisModel_t* LoadModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAPI_t* rapi)
-{
-	//Awful way to do this
-	std::map<uint32_t, std::vector<BYTE*>> bundleIDtoG1MOffsets;
-	std::map<uint32_t, std::vector<uint32_t>> bundleIDtoG1MSizes;
-	std::map<uint16_t, std::pair<uint8_t, uint16_t>> section1IDToBundleG1MID;
-	std::vector<std::pair<uint16_t, modelMatrix_t>> entityMatrices;
-	return ProcessModel<bBigEndian>(fileBuffer, bufferLen, numMdl, rapi, false, bundleIDtoG1MOffsets, bundleIDtoG1MSizes, section1IDToBundleG1MID, entityMatrices);
-}
-
-template<bool bBigEndian>
-noesisModel_t* LoadMap(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAPI_t* rapi)
-{
-	//Parse OBJD, only grab relevant information
-	OBJD<bBigEndian> objd = OBJD<bBigEndian>(fileBuffer, bufferLen);
-	std::map<uint32_t,std::vector<BYTE*>> bundleIDtoG1MOffsets;
-	std::map<uint32_t, std::vector<uint32_t>> bundleIDtoG1MSizes;
-	//Prompt for datatable with bundle
-	int datatableBufLength;
-	char datatablePath[MAX_NOESIS_PATH];
-	BYTE* datatableBuf = nullptr;
-	datatableBuf = rapi->Noesis_LoadPairedFile(rapi->Noesis_PooledString(const_cast<char*>("Select paired datatable file")),
-		rapi->Noesis_PooledString(const_cast<char*>(".datatable")), datatableBufLength, datatablePath);
-	if (datatableBuf && datatableBufLength > 0)
-	{
-		if (!UnpackBundles<bBigEndian>(datatableBuf,datatableBufLength, bundleIDtoG1MOffsets, bundleIDtoG1MSizes))
-			return nullptr;
-	}
-	noesisModel_t* mdlResult = ProcessModel<bBigEndian>(fileBuffer, bufferLen, numMdl, rapi, true, bundleIDtoG1MOffsets, bundleIDtoG1MSizes, objd.section1IDToBundleG1MID, objd.entityMatrices);
-	rapi->Noesis_UnpooledFree(datatableBuf);
-	datatableBuf = nullptr;
-	return mdlResult;
-}
 
 //when using the stream archive handler, you are responsible for managing the file handle yourself.
 template<bool bBigEndian>
@@ -201,6 +157,339 @@ bool LoadGZArchive(wchar_t* filename, __int64 len, bool justChecking, noeRAPI_t*
 	fclose(f);
 
 	return r;
+}
+
+template<bool bBigEndian>
+bool LoadTexture(BYTE* fileBuffer, int bufferLen, CArrayList<noesisTex_t*>& noeTex, noeRAPI_t* rapi)
+{
+	G1TG_TEXTURE<bBigEndian>(fileBuffer, bufferLen, noeTex, rapi, -1);
+	if(!bNoTextureRename)
+		rapi->Noesis_ProcessCommands("-texnorepfn"); //avoid renaming of the first texture
+	return 1;
+}
+
+template<bool bBigEndian>
+bool LoadHMTexture(BYTE* fileBuffer, int bufferLen, CArrayList<noesisTex_t*>& noeTex, noeRAPI_t* rapi)
+{
+	KHM<bBigEndian>(fileBuffer, bufferLen, noeTex, rapi);
+	if (!bNoTextureRename)
+		rapi->Noesis_ProcessCommands("-texnorepfn"); //avoid renaming of the first texture
+	return 1;
+}
+
+template<bool bBigEndian>
+noesisModel_t* LoadModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAPI_t* rapi)
+{
+	//Awful way to do this
+	std::map<uint32_t, std::vector<BYTE*>> bundleIDtoG1MOffsets;
+	std::map<uint32_t, std::vector<uint32_t>> bundleIDtoG1MSizes;
+	std::map<uint16_t, std::pair<uint8_t, uint16_t>> section1IDToBundleG1MID;
+	std::vector<std::pair<uint16_t, modelMatrix_t>> entityMatrices;
+	return ProcessModel<bBigEndian>(fileBuffer, bufferLen, numMdl, rapi, false, bundleIDtoG1MOffsets, bundleIDtoG1MSizes, section1IDToBundleG1MID, entityMatrices);
+}
+
+template<bool bBigEndian>
+noesisModel_t* LoadG1EMModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAPI_t* rapi)
+{
+	// Only returns one pointer, not sure how loading all models work
+	
+	//Before doing anything, make sure that Noesis is up to date
+	if (g_nfn->NPAPI_GetAPIVersion() < NOESIS_PLUGINAPI_VERSION) {
+		g_nfn->NPAPI_MessagePrompt(L"Please update Noesis!");
+		return nullptr;
+	}
+
+	void* ctx = rapi->rpgCreateContext(); //Create context
+
+	uint32_t GE1M_Offset = 0;
+	G1EM_HEADER<bBigEndian> g1emHeader = G1EM_HEADER<bBigEndian>(fileBuffer, GE1M_Offset, bufferLen);
+
+	if (g1emHeader.bPanic)
+	{
+		PopUpMessage(L"Error loading file.");
+		return nullptr;
+	}
+
+	///////////////////////////////
+	//   READ BASIC HEADER INFO  //
+	///////////////////////////////
+
+	CArrayList<noesisTex_t*> textureList;
+	CArrayList<noesisMaterial_t*> matList;
+	CArrayList<noesisModel_t*> mdlList;
+
+	int modelCount = (int)g1emHeader.MODEL_COUNT;
+	int meshesCount = (int)g1emHeader.MESH_COUNT;
+	int modelIndex = -1;
+	int g1tTexIndex = 1;
+	char texTitle[256] = { };
+	char texPrompt[256] = { };
+	// amount to load
+	int assetCount = meshesCount;
+
+	if (!bG1EMSplitMeshes)
+	{
+		assetCount = modelCount;
+	}
+	sprintf_s(texTitle, 256, "Select a model to load.");
+	sprintf_s(texPrompt, 256, "Use -1 to load all models, or model # between 1 - %d", assetCount);
+	modelIndex = PromptBetweenNumbers(texTitle, texPrompt, "-1", -1, assetCount, rapi);
+	if (modelIndex != -1)
+	{
+		modelIndex -= 1;
+	}
+
+	int g1tLen = 0;
+	bool skipG1t = false;
+
+	///////////////////////////////
+	//   GET TEXTURE IF NEEDED   //
+	///////////////////////////////
+
+	if (!skipG1t)
+	{
+		char g1tPath[MAX_NOESIS_PATH] = {};
+		sprintf_s(texTitle, 256, "Texture for model.");
+		sprintf_s(texPrompt, 256, ".g1t");
+		BYTE* g1tlData = rapi->Noesis_LoadPairedFile(texTitle, texPrompt, g1tLen, g1tPath);
+		while (!g1tlData && skipG1t == false)
+		{
+			if (g1tLen == 0)
+			{
+				PopUpMessage(L"Error loading file or canceled, skipping texture.");
+				skipG1t = true;
+				g1tlData = nullptr;
+			}
+			else
+			{
+				PopUpMessage(L"Error loading file, try again.");
+				g1tLen = 0;
+				g1tlData = rapi->Noesis_LoadPairedFile(texTitle, texPrompt, g1tLen, g1tPath);
+			}
+		}
+		if (!skipG1t && g1tlData)
+		{
+			uint32_t g1tOffset = 0;
+			G1T_HEADER<bBigEndian> g1tHeader = G1T_HEADER<bBigEndian>(g1tlData, g1tOffset, rapi, g1tLen);
+			if (g1tHeader.bPanic)
+			{
+				PopUpMessage(L"G1T read error, skipping texture.");
+				skipG1t = true;
+			}
+			else
+			{
+				if (g1tHeader.TEX_COUNT != 1)
+				{
+					int texCount = g1tHeader.TEX_COUNT;
+					sprintf_s(texTitle, 256, "G1T file has more than one texture.");
+					sprintf_s(texPrompt, 256, "G1T file has %d textures. \nWhich texture would you like to use?", texCount);
+					g1tTexIndex = PromptBetweenNumbers(texTitle, texPrompt, "1", 1, texCount, rapi);
+					g1tTexIndex -= 1;
+				}
+				G1TG_TEXTURE<bBigEndian> g1tParse = G1TG_TEXTURE<bBigEndian>(g1tlData, g1tLen, textureList, rapi, g1tTexIndex);
+				noesisMaterial_t* material = rapi->Noesis_GetMaterialList(1, true);
+				material->texIdx = 1;
+				char mat_name[128];
+				snprintf(mat_name, 128, "%d_mat", 0);
+				material->name = rapi->Noesis_PooledString(mat_name);
+				matList.Append(material);
+				rapi->rpgSetMaterial(mat_name);
+			}
+		}
+	}
+
+	///////////////////////////////
+	//      READ MODEL DATA      //
+	///////////////////////////////
+
+	GE1M_Offset = 0;
+	G1EM_MODEL<bBigEndian> g1emData = G1EM_MODEL<bBigEndian>(fileBuffer, GE1M_Offset, bufferLen);
+
+	int modelID = 0;
+	int accSubmesh = 0; // hack necessary to split models due to some weird Noesis bug
+	int previousModelID = 0;
+
+	///////////////////////////////
+	//      PARSE MESHES         //
+	///////////////////////////////
+
+	for (int i = 0; i < meshesCount; i++)
+	{
+		G1EM_MESH_ENTRY<bBigEndian> meshEntry = g1emData.MESH_ENTRIES[i];
+		modelID = meshEntry.modelID;
+		if (!bG1EMSplitMeshes)
+		{
+			if (previousModelID < modelID)
+			{
+				if (previousModelID == modelIndex || modelIndex == -1)
+				{
+					noesisModel_t* mdl = rapi->rpgConstructModel();		
+					// m = NoeModel(mdl.meshes[-accSubmesh:]) # unsure what is happening here
+					if (!mdl)
+					{
+						// we should only ever have 1 texture
+						if (textureList.Num() != 0)
+						{
+							noesisTex_t* texData = (noesisTex_t*)textureList[0];
+							rapi->rpgSetMaterial(texData->filename);
+							noesisMatData_t* pMd = rapi->Noesis_GetMatDataFromLists(matList, textureList); // unsure how else to get noesisMatData_t
+							rapi->Noesis_SetModelMaterials(mdl, pMd);
+							mdlList.Append(mdl);
+						}
+						else
+						{
+							mdlList.Append(mdl);
+						}
+					}					
+				}
+				accSubmesh = 0;
+				previousModelID = modelID;
+			}
+			accSubmesh += 1;
+		}
+		
+		int id = i;
+
+		if (!bG1EMSplitMeshes)
+		{
+			id = modelID;
+		}
+
+		if (id != modelIndex && modelIndex != -1)
+		{
+			continue;
+		}
+
+		///////////////////////////////
+		//      PARSE GEOMETRY       //
+		///////////////////////////////
+		
+		rapi->rpgClearBufferBinds();
+
+		G1EM_MODEL_ENTRY<bBigEndian> modelEntry = g1emData.MODEL_ENTRIES[modelID];
+
+		for (size_t z = 0; z < modelEntry.semanticCount; z++)
+		{
+			G1EM_SEMANTIC_ENTRY<bBigEndian> semEntry = modelEntry.SEMANTIC_ENTRIES[z];
+			if (semEntry.semantic == 0)	//position
+			{
+				rapi->rpgBindPositionBuffer(&modelEntry.vBuffer[semEntry.offset], G1EM_DATATYPES(semEntry.dataType), modelEntry.vertexStride); // no rpgBindPositionBufferOfs
+			}
+			else if (semEntry.semantic == 3) // normal
+			{
+				rapi->rpgBindNormalBuffer(&modelEntry.vBuffer[semEntry.offset], G1EM_DATATYPES(semEntry.dataType), modelEntry.vertexStride); // no rpgBindPositionBufferOfs
+			}
+			else if (semEntry.semantic == 5) // UVs
+			{
+				rapi->rpgBindUV1Buffer(&modelEntry.vBuffer[semEntry.offset], G1EM_DATATYPES(semEntry.dataType), modelEntry.vertexStride); // no rpgBindUV1BufferOfs
+			}
+			// else if (semantic == 10) // color
+			// {
+			// 	rapi->rpgBindColorBufferOfs(&modelEntry.vBuffer[meshEntry.vOffset + semEntry.offset], G1EM_DATATYPES(semEntry.dataType), modelEntry.vertexStride, 4);
+			// }
+		}
+
+		char mesh_name[256];
+		sprintf_s(mesh_name, 256, "model%d_mesh%d", modelID, i);
+
+		if (!bG1EMSplitMeshes)
+		{
+			sprintf_s(mesh_name, 256, "model%d_mesh%d", modelID, accSubmesh);
+		}
+		rapi->rpgSetName(mesh_name);
+
+		if (bDebugLog)
+		{
+			LogDebug("loaded model %d, mesh %d\n", modelID, i);
+		}
+
+		if (meshEntry.primType == 3)
+		{
+			rapi->rpgCommitTriangles(&modelEntry.idxBuffer[meshEntry.idxOffset*2], rpgeoDataType_e::RPGEODATA_USHORT, meshEntry.idxCount, RPGEO_TRIANGLE, false); // unsure of usePlotMap as it isnt in python
+		}
+		else if (meshEntry.primType == 4)
+		{
+			rapi->rpgCommitTriangles(&modelEntry.idxBuffer[meshEntry.idxOffset*2], rpgeoDataType_e::RPGEODATA_USHORT, meshEntry.idxCount, RPGEO_TRIANGLE_STRIP, false); // unsure of usePlotMap as it isnt in python
+		}
+
+		if (bG1EMSplitMeshes)
+		{
+			noesisModel_t* mdl = rapi->rpgConstructModel();
+			// m = NoeModel(mdl.meshes[-1:]) # unsure what is happening here
+			if (textureList.Num() != 0)
+			{
+				noesisTex_t* texData = (noesisTex_t*)textureList[0];
+				rapi->rpgSetMaterial(texData->filename);
+				noesisMatData_t* pMd = rapi->Noesis_GetMatDataFromLists(matList, textureList);
+				rapi->Noesis_SetModelMaterials(mdl, pMd);
+				mdlList.Append(mdl);
+			}
+			else
+			{
+				mdlList.Append(mdl);
+			}
+		}
+	}
+
+	if (!bG1EMSplitMeshes)
+	{
+		if (modelID == modelIndex || modelIndex == -1)
+		{
+			noesisModel_t* mdl = rapi->rpgConstructModel();
+			// m = NoeModel(mdl.meshes[-accSubmesh:]) # unsure what is happening here
+			if (textureList.Num() != 0)
+			{
+				noesisTex_t* texData = (noesisTex_t*)textureList[0];
+				rapi->rpgSetMaterial(texData->filename);
+				noesisMatData_t* pMd = rapi->Noesis_GetMatDataFromLists(matList, textureList);
+				rapi->Noesis_SetModelMaterials(mdl, pMd);
+				mdlList.Append(mdl);
+			}
+			else
+			{
+				mdlList.Append(mdl);
+			}
+		}
+	}
+
+	rapi->rpgDestroyContext(ctx);
+
+	if (!bNoTextureRename)
+		rapi->Noesis_ProcessCommands("-texnorepfn"); //avoid renaming of the first texture
+
+	numMdl = mdlList.Num();
+	matList.Clear();
+	textureList.Clear();
+	if (numMdl > 0)
+	{
+		return mdlList[0];
+	}
+
+	return NULL;
+}
+
+template<bool bBigEndian>
+noesisModel_t* LoadMap(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAPI_t* rapi)
+{
+	//Parse OBJD, only grab relevant information
+	OBJD<bBigEndian> objd = OBJD<bBigEndian>(fileBuffer, bufferLen);
+	std::map<uint32_t,std::vector<BYTE*>> bundleIDtoG1MOffsets;
+	std::map<uint32_t, std::vector<uint32_t>> bundleIDtoG1MSizes;
+	//Prompt for datatable with bundle
+	int datatableBufLength;
+	char datatablePath[MAX_NOESIS_PATH];
+	BYTE* datatableBuf = nullptr;
+	datatableBuf = rapi->Noesis_LoadPairedFile(rapi->Noesis_PooledString(const_cast<char*>("Select paired datatable file")),
+		rapi->Noesis_PooledString(const_cast<char*>(".datatable")), datatableBufLength, datatablePath);
+	if (datatableBuf && datatableBufLength > 0)
+	{
+		if (!UnpackBundles<bBigEndian>(datatableBuf,datatableBufLength, bundleIDtoG1MOffsets, bundleIDtoG1MSizes))
+			return nullptr;
+	}
+	noesisModel_t* mdlResult = ProcessModel<bBigEndian>(fileBuffer, bufferLen, numMdl, rapi, true, bundleIDtoG1MOffsets, bundleIDtoG1MSizes, objd.section1IDToBundleG1MID, objd.entityMatrices);
+	rapi->Noesis_UnpooledFree(datatableBuf);
+	datatableBuf = nullptr;
+	return mdlResult;
 }
 
 template<bool bBigEndian>
@@ -1277,7 +1566,7 @@ noesisModel_t* ProcessModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRAP
 	CArrayList<noesisMaterial_t*> matList;
 	for (auto i = 0; i < g1tFileBuffers.size(); i++)
 	{	
-		G1TG_TEXTURE<bBigEndian>(g1tFileBuffers[i], g1tFileLengths[i], textureList, rapi);
+		G1TG_TEXTURE<bBigEndian>(g1tFileBuffers[i], g1tFileLengths[i], textureList, rapi, -1);
 	}
 
 	//Processing the geometry data
@@ -2312,6 +2601,13 @@ bool NPAPI_InitLocal(void)
 	int fHandleBE = g_nfn->NPAPI_Register((char*)"G1M File (Big Endian)", (char*) ".g1m");
 	if (fHandleBE < 0)
 		return false;
+	int fGEHandle = g_nfn->NPAPI_Register((char*)"G1EM File (Little Endian)", (char*)".g1em");
+	if (fGEHandle < 0)
+		return false;
+	int fGEHandleBE = g_nfn->NPAPI_Register((char*)"G1EM File (Big Endian)", (char*)".g1em");
+	if (fGEHandleBE < 0)
+		return false;
+
 	//Texture handlers
 	int fTHandle = g_nfn->NPAPI_Register((char*)"G1T File (Little Endian)", (char*) ".g1t");
 	if (fTHandle < 0)
@@ -2407,20 +2703,25 @@ bool NPAPI_InitLocal(void)
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
 	getEnableLOD(optHandle);
 
-	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Generate all texture planes"), setPlanes, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Slices image for panes (may cause display issues)."));
+	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Generate all texture layers"), setLayers, nullptr);
+	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Slices image for depth and panes (may cause display issues)."));
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
-	getPlanes(optHandle);
+	getLayers(optHandle);
 
 	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Flip image vertically"), setFlipVertically, nullptr);
 	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("For when an images are backwards."));
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
-	getEnableLOD(optHandle);
+	getFlipVertically(optHandle);
 
 	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Flip image horizontally"), setFlipHorizontally, nullptr);
 	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("For when an images are upside down"));
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
-	getEnableLOD(optHandle);
+	getFlipHorizontally(optHandle);
+
+	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Split G1EM models"), setG1EMSplitMeshes, nullptr);
+	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("For game systems where the models aren't split by mesh"));
+	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
+	getG1EMSplitMeshes(optHandle);
 
 	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Enable debug log"), setDebugLog, nullptr);
 	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Enable debug log"));
@@ -2444,6 +2745,10 @@ bool NPAPI_InitLocal(void)
 	g_nfn->NPAPI_SetTypeHandler_LoadModel(fHandle, LoadModel<false>);
 	g_nfn->NPAPI_SetTypeHandler_TypeCheck(fHandleBE, CheckModel<true>);
 	g_nfn->NPAPI_SetTypeHandler_LoadModel(fHandleBE, LoadModel<true>);
+	g_nfn->NPAPI_SetTypeHandler_TypeCheck(fGEHandle, CheckModel<false>);
+	g_nfn->NPAPI_SetTypeHandler_LoadModel(fGEHandle, LoadG1EMModel<false>);
+	g_nfn->NPAPI_SetTypeHandler_TypeCheck(fGEHandleBE, CheckModel<true>);
+	g_nfn->NPAPI_SetTypeHandler_LoadModel(fGEHandleBE, LoadG1EMModel<true>);
 
 	//Textures
 	g_nfn->NPAPI_SetTypeHandler_TypeCheck(fTHandle, CheckTexture<false>);

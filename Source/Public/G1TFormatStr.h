@@ -6,7 +6,7 @@
 // For texture debugging
 // Source: https://github.com/hearhellacopters/G1T
 
-std::string getPS3FormatStr(uint8_t format)
+char* getPS3FormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -52,7 +52,7 @@ std::string getPS3FormatStr(uint8_t format)
 		break;
 	}
 }
-std::string getX360FormatStr(uint8_t format)
+char* getX360FormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -87,8 +87,8 @@ std::string getX360FormatStr(uint8_t format)
 	case 0x1C: return "B5G6R5";
 	case 0x1D: return "B5G5R5A1";
 	case 0x1E: return "ARGB4_UNORM";
-	case 0x1F: return "R32_FLOAT";
-	case 0x20: return "R32_FLOAT";
+	case 0x1F: return "R32_FLOAT"; // likely D32 float
+	case 0x20: return "R32_FLOAT"; // likely D32 float
 	case 0x21: return "BGRA8_UNORM";
 	case 0x22: return "RGBP8_UNORM";
 	case 0x23: return "RG16";
@@ -126,7 +126,7 @@ std::string getX360FormatStr(uint8_t format)
 	}
 }
 
-std::string getNWiiFormatStr(uint8_t format)
+char* getNWiiFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -143,23 +143,79 @@ std::string getNWiiFormatStr(uint8_t format)
 	case 0x28: return "GX_TF_I8";
 	case 0x29: return "GX_TF_I8";
 	case 0x2A: return "GX_TF_I8";
-	case 0x2B: return "GX_TL_IA8";
+	case 0x2B: return "GX_TL_I4";
 	case 0x2C: return "GX_TF_I8";
 	case 0x2D: return "GX_TF_IA4";
 	case 0x2E: return "GX_TF_IA8";
-	case 0x2F: return "GX_TL_IA8";
-	case 0x30: return "GX_TF_Z8";
+	case 0x2F: return "GX_TL_I4";  // likely depth
+	case 0x30: return "GX_TF_Z8";  // likely depth
 	case 0x31: return "GX_TF_CI4";
 	case 0x32: return "GX_TF_CI8";
 	case 0x33: return "GX_TF_CI14";
-	case 0x7D: return "ASTC_FORMAT";
-	case 0x7E: return "ASTC_FORMAT";
 	default:   return "Unknown format";
 		break;
 	}
 }
 
-std::string getN3DSFormatStr(uint8_t format)
+tplFormats_e getNWiiFormat(uint8_t format)
+{
+	// ID	Name			BPP	W	H	Block		Type
+	// 0x03	IA8				16	4	4	32 bytes	Gray + Alpha
+	// 0x04	RGB565			16	4	4	32 bytes	Color
+	// 0x05	RGB5A3			16	4	4	32 bytes	Color + Alpha
+	// 0x0A	C14X2(CI14x2)	16	4	4	32 bytes	Palette(IA8, RGB565, RGB5A3) (32,768 byte palette)
+
+	// 0x06	RGBA32(RGBA8)	32	4	4	64 bytes	Color + Alpha
+	
+	// 0x00	I4				4	8	8	32 bytes	Gray
+	// 0x0E	CMPR			4	8	8	32 bytes	Color + optional Alpha(compressed)
+	// 0x08	C4(CI4)			4	8	8	32 bytes	Palette(IA8, RGB565, RGB5A3) (32 byte palette)
+
+	// 0x01	I8				8	8	4	32 bytes	Gray
+	// 0x02	IA4				8	8	4	32 bytes	Gray + Alpha
+	// 0x09	C8(CI8)			8	8	4	32 bytes	Palette(IA8, RGB565, RGB5A3) (512 byte palette)
+
+	switch (format)
+	{
+	case 0x0A: // "GX_TF_RGBA8";
+	case 0x22: // "GX_TF_RGBA8";
+	case 0x13: // "GX_TF_Z24X8";
+		return tplFormats_e::RGBA32;
+	case 0x10: // "BC1";
+		return tplFormats_e::CMPR;
+	case 0x2C: // "GX_TF_I8";
+	case 0x28: // "GX_TF_I8";
+	case 0x29: // "GX_TF_I8";
+	case 0x2A: // "GX_TF_I8";
+	case 0x18: // "GX_TF_I8";
+	case 0x30: // "GX_TF_Z8";
+		return tplFormats_e::I8;
+	case 0x1C: // "GX_TF_RGB565";
+		return tplFormats_e::RGB565;
+	case 0x25: // "GX_TF_RGB5A3";
+		return tplFormats_e::RGB5A3;
+	case 0x26: // "GX_TF_IA8";
+	case 0x27: // "GX_TF_IA8";
+	case 0x2E: // "GX_TF_IA8";
+		return tplFormats_e::IA8;
+	case 0x2B: // "GX_TL_I4";
+	case 0x2F: // "GX_TL_I4";
+		return tplFormats_e::I4;
+	case 0x2D: // "GX_TF_IA4";
+		return tplFormats_e::IA4;
+	case 0x31: // "GX_TF_CI4";
+		return tplFormats_e::C4;
+	case 0x32: // "GX_TF_CI8";
+		return tplFormats_e::C8;
+	case 0x15: // "GX_TF_Z16";
+	case 0x33: // "GX_TF_CI14";
+		return tplFormats_e::C14X2;
+	default:   
+		return tplFormats_e::IA8;
+	}
+}
+
+char* getN3DSFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -179,7 +235,7 @@ std::string getN3DSFormatStr(uint8_t format)
 	case 0x46: return "PICA_R16 UNSIGNED_BYTE";
 	case 0x47: return "PICA_ETC1_RGB8";
 	case 0x48: return "PICA_ETC1_RGB8A4";
-	case 0x4a: return "PICA_RGB UNSIGNED_BYTE";
+	case 0x4a: return "PICA_RGB UNSIGNED_BYTE"; // likely depth
 	case 0x7D: return "ASTC_FORMAT";
 	case 0x7E: return "ASTC_FORMAT";
 	default:   return "Unknown format";
@@ -187,7 +243,7 @@ std::string getN3DSFormatStr(uint8_t format)
 	}
 }
 
-std::string getPSVitaFormatStr(uint8_t format)
+char* getPSVitaFormatStr(uint8_t format)
 {
 	switch (format)
 	{                 // for RGBA standard is ABGR Channel 1 is Alpha, 2 is Blue, 3 is Green and Red is 4
@@ -273,7 +329,7 @@ std::string getPSVitaFormatStr(uint8_t format)
 	}
 }
 
-std::string getAndroidFormatStr(uint8_t format)
+char* getAndroidFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -331,7 +387,7 @@ std::string getAndroidFormatStr(uint8_t format)
 	}
 }
 
-std::string getiOSFormatStr(uint8_t format)
+char* getiOSFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -519,7 +575,7 @@ int getNWiiUFormatValue(uint8_t format, uint8_t KTGL_GD_COLOR_SPACE)
 	}
 }
 
-std::string getNWiiUFormatStr(uint8_t format)
+char* getNWiiUFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -573,7 +629,7 @@ std::string getNWiiUFormatStr(uint8_t format)
 	}
 }
 
-std::string getWinMacFormatStr(uint8_t format)
+char* getWinMacFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -656,7 +712,7 @@ std::string getWinMacFormatStr(uint8_t format)
 	}
 }
 
-std::string getPS4FormatStr(uint8_t format)
+char* getPS4FormatStr(uint8_t format)
 {
 	switch (format)
 	{                 // RGBA order
@@ -755,7 +811,7 @@ std::string getPS4FormatStr(uint8_t format)
 	}
 }
 
-std::string getNSwitchFormatStr(uint8_t format)
+char* getNSwitchFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -840,7 +896,7 @@ std::string getNSwitchFormatStr(uint8_t format)
 	}
 }
 
-std::string getPS5FormatStr(uint8_t format)
+char* getPS5FormatStr(uint8_t format)
 {
 	switch (format)
 	{                 // Channel Order is RGBA
@@ -918,12 +974,12 @@ std::string getPS5FormatStr(uint8_t format)
 	case 0x47: return "RGBX RED GREEN BLUE NO_ALPHA";
 	case 0x48: return "RGBA RED GREEN BLUE ALPHA";
 	case 0x49: return "RGBX RED GREEN BLUE NO_ALPHA";
-	case 0x4A: return "RXXX RED NONE NONE NO_ALPHA";
-	case 0x4B: return "RXXX RED NONE NONE NO_ALPHA";
+	case 0x4A: return "RXXX RED NONE NONE NO_ALPHA"; // likely depth
+	case 0x4B: return "RXXX RED NONE NONE NO_ALPHA"; // likely depth
 	case 0x4C: return "R32G32_FLOAT GRXX GREEN RED NONE NO_ALPHA";
 	case 0x4D: return "R32G32_FLOAT GRXX GREEN RED NONE NO_ALPHA";
-	case 0x4E: return "R32F RXXX RED NONE NONE NO_ALPHA";
-	case 0x4F: return "R32F RXXX RED NONE NONE NO_ALPHA";
+	case 0x4E: return "R32F RXXX RED NONE NONE NO_ALPHA"; // likely depth
+	case 0x4F: return "R32F RXXX RED NONE NONE NO_ALPHA"; // likely depth
 	case 0x50: return "RGBA RED GREEN BLUE ALPHA";
 	case 0x51: return "RGBA RED GREEN BLUE ALPHA";
 	case 0x52: return "RGBA RED GREEN BLUE ALPHA";
@@ -952,9 +1008,9 @@ std::string getPS5FormatStr(uint8_t format)
 	case 0x69: return "RG16F RGXX RED GREEN NONE NO_ALPHA";
 	case 0x6A: return "R16_HALF_FLOAT RXXX RED NONE NONE NO_ALPHA";
 	case 0x6B: return "R11F_G11F_B10F RGBX RED GREEN BLUE NO_ALPHA";
-	case 0x6C: return "R32F RXXX RED NONE NONE NO_ALPHA";
-	case 0x6D: return "R32F RXXX RED NONE NONE NO_ALPHA";
-	case 0x6E: return "R16 RXXX RED NONE NONE NO_ALPHA";
+	case 0x6C: return "R32F RXXX RED NONE NONE NO_ALPHA"; // likely depth
+	case 0x6D: return "R32F RXXX RED NONE NONE NO_ALPHA"; // likely depth
+	case 0x6E: return "R16 RXXX RED NONE NONE NO_ALPHA"; // likely depth
 	case 0x6F: return "RGBA RED GREEN BLUE ALPHA";
 	case 0x70: return "RGBA RED GREEN BLUE ALPHA";
 	case 0x71: return "RGBA RED GREEN BLUE ALPHA";
@@ -965,7 +1021,7 @@ std::string getPS5FormatStr(uint8_t format)
 	case 0x76: return "RG16F RGXX RED GREEN NONE NO_ALPHA";
 	case 0x77: return "R16_HALF_FLOAT RXXX RED NONE NONE NO_ALPHA";
 	case 0x78: return "R11F_G11F_B10F RGBX RED GREEN BLUE NO_ALPHA";
-	case 0x79: return "R16 RXXX RED NONE NONE NO_ALPHA";
+	case 0x79: return "R16 RXXX RED NONE NONE NO_ALPHA"; // likely depth
 	case 0x7A: return "RXXX RED NONE NONE NO_ALPHA";
 	case 0x7B: return "RGXX RED GREEN NONE NO_ALPHA";
 	case 0x7C: return "RGBA RED GREEN BLUE ALPHA";
@@ -976,11 +1032,13 @@ std::string getPS5FormatStr(uint8_t format)
 	}
 }
 
-std::string getFormatStr(PLATFORM system, uint8_t format)
+char* getFormatStr(PLATFORM system, uint8_t format)
 {
 	switch (system)
 	{
-	case PLATFORM::PS2:     return "PS2 raw";
+	case PLATFORM::PS2:
+	case PLATFORM::NDS:     return "No known g1t files";
+
 	case PLATFORM::PS3:     return getPS3FormatStr(format);
 	case PLATFORM::X360:    return getX360FormatStr(format);
 	case PLATFORM::NWii:    return getNWiiFormatStr(format);

@@ -665,4 +665,123 @@ void LogDebug(const char* format, ...)
 	g_nfn->NPAPI_DebugLogStr(msgBuffer);
 }
 
+// Safe formatted pop up message (256 max string)
+void PopUpMessage(const wchar_t* format, ...)
+{
+	wchar_t msgBuffer[LOG_BUFFER_SIZE] = {};
+	va_list args;
+
+	va_start(args, format);
+	vswprintf_s(msgBuffer, format, args);
+	va_end(args);
+
+	g_nfn->NPAPI_MessagePrompt(msgBuffer);
+}
+
+// prompt the user (does not validate)
+BYTE* UserPrompt(char* title, char* prompt, char* defaultStr, noeRAPI_t* rapi, noeUserValType_e val = noeUserValType_e::NOEUSERVAL_STRING)
+{
+	BYTE* valueOut;
+	// unsure why this struct is so big
+	noeUserPromptParam_t promptParams = {};
+	char* titleStr = (char*)rapi->Noesis_UnpooledAlloc(MAX_NOESIS_PATH);
+	if (!titleStr)
+	{
+		PopUpMessage(L"ERROR!! titleStr alloc\n");
+		return (BYTE*)nullptr;
+	}
+	char* promptStr = (char*)rapi->Noesis_UnpooledAlloc(MAX_NOESIS_PATH);
+	if (!promptStr)
+	{
+		PopUpMessage(L"ERROR!! promptStr alloc\n");
+		return (BYTE*)nullptr;
+	}
+	char* defaultValue = (char*)rapi->Noesis_UnpooledAlloc(MAX_NOESIS_PATH);
+	if (!defaultValue)
+	{
+		PopUpMessage(L"ERROR!! defaultValue alloc\n");
+		return (BYTE*)nullptr;
+	}
+	sprintf_s(titleStr, MAX_NOESIS_PATH, "%s", title);
+	sprintf_s(promptStr, MAX_NOESIS_PATH, "%s", prompt);
+	sprintf_s(defaultValue, MAX_NOESIS_PATH, "%s", defaultStr);
+	promptParams.titleStr = titleStr;
+	promptParams.promptStr = promptStr;
+	promptParams.defaultValue = defaultValue;
+	promptParams.valType = val;
+	promptParams.valHandler = NULL;
+	while (g_nfn->NPAPI_UserPrompt(&promptParams)) 
+	{
+		valueOut = (BYTE*)promptParams.valBuf;
+		rapi->Noesis_UnpooledFree(titleStr);
+		rapi->Noesis_UnpooledFree(promptStr);
+		rapi->Noesis_UnpooledFree(defaultValue);
+		return valueOut;
+	};
+}
+
+// get a number value between two numbers (repeats if not given a value between)
+int PromptBetweenNumbers(char* title, char* prompt, char* defaultStr, int lowest, int highest, noeRAPI_t* rapi)
+{
+	int valueOut;
+	// unsure why this struct is so big
+	noeUserPromptParam_t *promptParams = (noeUserPromptParam_t*)rapi->Noesis_UnpooledAlloc(sizeof(noeUserPromptParam_t));
+	if (!promptParams)
+	{
+		PopUpMessage(L"ERROR!! promptParams alloc\n");
+		return -1;
+	}
+	char *titleStr = (char*)rapi->Noesis_UnpooledAlloc(MAX_NOESIS_PATH);
+	if (!titleStr)
+	{
+		PopUpMessage(L"ERROR!! titleStr alloc\n");
+		return -1;
+	}
+	char *promptStr = (char*)rapi->Noesis_UnpooledAlloc(MAX_NOESIS_PATH);
+	if (!promptStr)
+	{
+		PopUpMessage(L"ERROR!! promptStr alloc\n");
+		return -1;
+	}
+	char *defaultValue = (char*)rapi->Noesis_UnpooledAlloc(MAX_NOESIS_PATH);
+	if (!defaultValue)
+	{
+		PopUpMessage(L"ERROR!! defaultValue alloc\n");
+		return -1;
+	}
+	sprintf_s(titleStr, MAX_NOESIS_PATH, "%s", title);
+	sprintf_s(promptStr, MAX_NOESIS_PATH, "%s", prompt);
+	sprintf_s(defaultValue, MAX_NOESIS_PATH, "%s", defaultStr);
+	promptParams->titleStr = titleStr;
+	promptParams->promptStr = promptStr;
+	promptParams->defaultValue = defaultValue;
+	promptParams->valType = noeUserValType_e::NOEUSERVAL_INT;
+	promptParams->valHandler = NULL;
+	while (g_nfn->NPAPI_UserPrompt(promptParams))
+	{
+		valueOut = *(int*)promptParams->valBuf;
+		if (valueOut < lowest || valueOut > highest)
+		{
+			rapi->Noesis_UnpooledFree(titleStr);
+			rapi->Noesis_UnpooledFree(promptStr);
+			rapi->Noesis_UnpooledFree(defaultValue);
+			rapi->Noesis_UnpooledFree(promptParams);
+			return PromptBetweenNumbers(title, prompt, defaultStr, lowest, highest, rapi);
+		}
+		else
+		{
+			rapi->Noesis_UnpooledFree(titleStr);
+			rapi->Noesis_UnpooledFree(promptStr);
+			rapi->Noesis_UnpooledFree(defaultValue);
+			rapi->Noesis_UnpooledFree(promptParams);
+			return valueOut;
+		}
+		rapi->Noesis_UnpooledFree(titleStr);
+		rapi->Noesis_UnpooledFree(promptStr);
+		rapi->Noesis_UnpooledFree(defaultValue);
+		rapi->Noesis_UnpooledFree(promptParams);
+		return valueOut;
+	};
+}
+
 #endif // !UTILS_H

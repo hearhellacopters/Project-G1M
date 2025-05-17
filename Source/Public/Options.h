@@ -232,21 +232,21 @@ int setEnableLOD(int handle, void* userData)
 }
 
 //bPlanes
-void getPlanes(int handle)
+void getLayers(int handle)
 {
 	BYTE buffer[1];
 	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::planes"), buffer, 1))
 	{
-		bPlanes = buffer[0] == 1;
+		bLayers = buffer[0] == 1;
 	}
-	g_nfn->NPAPI_CheckToolMenuItem(handle, bPlanes);
+	g_nfn->NPAPI_CheckToolMenuItem(handle, bLayers);
 }
-int setPlanes(int handle, void* userData)
+int setLayers(int handle, void* userData)
 {
-	bPlanes = !bPlanes;
-	BYTE buffer[1] = { bPlanes };
+	bLayers = !bLayers;
+	BYTE buffer[1] = { bLayers };
 	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::planes"), buffer, 1);
-	g_nfn->NPAPI_CheckToolMenuItem(handle, bPlanes);
+	g_nfn->NPAPI_CheckToolMenuItem(handle, bLayers);
 	return 1;
 }
 
@@ -288,6 +288,25 @@ int setFlipHorizontally(int handle, void* userData)
 	return 1;
 }
 
+//bG1EMSplitMeshes
+void getG1EMSplitMeshes(int handle)
+{
+	BYTE buffer[1];
+	if (g_nfn->NPAPI_UserSettingRead(const_cast<wchar_t*>(L"g1m::G1EMSplitMeshes"), buffer, 1))
+	{
+		bG1EMSplitMeshes = buffer[0] == 1;
+	}
+	g_nfn->NPAPI_CheckToolMenuItem(handle, bG1EMSplitMeshes);
+}
+int setG1EMSplitMeshes(int handle, void* userData)
+{
+	bG1EMSplitMeshes = !bG1EMSplitMeshes;
+	BYTE buffer[1] = { bG1EMSplitMeshes };
+	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::G1EMSplitMeshes"), buffer, 1);
+	g_nfn->NPAPI_CheckToolMenuItem(handle, bG1EMSplitMeshes);
+	return 1;
+}
+
 //bDebugLog
 void getDebugLog(int handle)
 {
@@ -309,7 +328,8 @@ int setDebugLog(int handle, void* userData)
 	BYTE buffer[1] = { bDebugLog };
 	g_nfn->NPAPI_UserSettingWrite(const_cast<wchar_t*>(L"g1m::debug"), buffer, 1);
 	g_nfn->NPAPI_CheckToolMenuItem(handle, bDebugLog);
-	if (bDebugLog) {
+	if (bDebugLog) 
+	{
 		if (!g_nfn->NPAPI_DebugLogIsOpen())
 		{
 			g_nfn->NPAPI_PopupDebugLog(0);
@@ -318,7 +338,7 @@ int setDebugLog(int handle, void* userData)
 	}
 	else 
 	{
-		LogDebug("G1M v%s debugging enabled.\n", PLUGIN_VERSON);
+		LogDebug("G1M v%s debugging disabled.\n", PLUGIN_VERSON);
 	}
 	return 1;
 }

@@ -1,10 +1,4 @@
-﻿#include <stdint.h>
-#include <stdio.h>
-#include <stddef.h>
-#include <string.h>
-#include <math.h>
-
-#pragma once
+﻿#pragma once
 
 #ifndef G1T_FORMAT_CONVERT_H
 #define G1T_FORMAT_CONVERT_H
@@ -137,6 +131,12 @@ uint32_t BlockMxNUnswizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t
     return sourceOffset;
 }
 
+uint32_t Block1x1Unswizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y)
+{
+
+    return BlockMxNUnswizzle<1, 1>(width, height, x, y);
+}
+
 // Mario Kart WII
 uint32_t Block4x4Unswizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y)
 {
@@ -165,6 +165,12 @@ uint32_t Block16x8Unswizzle(uint32_t width, uint32_t height, uint32_t x, uint32_
     //     {MortonY, 8},
     // };
     // return CustomSwizzle(width, height, x, y, items, countof(items));
+}
+
+// PS Vita
+uint32_t Block32x32Unswizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y)
+{
+    return BlockMxNUnswizzle<32, 32>(width, height, x, y);
 }
 
 uint32_t Block16x16Unswizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y)
@@ -246,7 +252,7 @@ uint32_t D3D12_64KBSwizzleRaw(uint32_t width, uint32_t height, uint32_t x, uint3
 }
 
 // 3DS
-uint32_t D3DStandardUnswizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y, uint32_t blockPixelSize, uint32_t texelByteSize)
+uint32_t D3DStandardUnswizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y, uint32_t blockPixelSize, uint32_t texelByteSize, bool useBlock)
 {
     assert(blockPixelSize == 1 || blockPixelSize == 4);
     assert((texelByteSize & (texelByteSize - 1)) == 0); // Power of two.
@@ -363,40 +369,86 @@ uint32_t D3DStandardUnswizzle(uint32_t width, uint32_t height, uint32_t x, uint3
         {BlockAxis::MortonX, 2},
     };
 
+    constexpr static CustomSwizzleItem itemsVary64[] =
+    {
+        {BlockAxis::LinearX, 1}, // 1x1
+        {BlockAxis::LinearY, 1}, // 1x1
+        {BlockAxis::MortonX, 2},
+        {BlockAxis::MortonY, 4},
+        {BlockAxis::MortonX, 4},
+        {BlockAxis::MortonY, 2},
+        {BlockAxis::MortonX, 2},
+        {BlockAxis::MortonY, 2},
+        //{BlockAxis::MortonX, 2},
+        //{BlockAxis::MortonY, 2},
+        //{BlockAxis::MortonX, 2},
+        //{BlockAxis::MortonY, 2},
+        //{BlockAxis::MortonX, 2},
+    };
+
+    constexpr static CustomSwizzleItem itemsVary128[] =
+    {
+        {BlockAxis::LinearX, 1}, // 1x1
+        {BlockAxis::LinearY, 1}, // 1x1
+        {BlockAxis::MortonX, 2},
+        {BlockAxis::MortonY, 4},
+        {BlockAxis::MortonX, 4},
+        {BlockAxis::MortonY, 2},
+        {BlockAxis::MortonX, 2},
+        {BlockAxis::MortonY, 2},
+        {BlockAxis::MortonX, 2},
+        {BlockAxis::MortonY, 2},
+        {BlockAxis::MortonX, 2},
+        {BlockAxis::MortonY, 2},
+        {BlockAxis::MortonX, 2},
+    };
+
     struct
     {
         CustomSwizzleItem const* data = nullptr;
         size_t count = 0;
     } items;
 
-    switch (texelByteSize)
+    if (useBlock)
     {
-    default:
-    case 8:   items = { items8bpp, countof(items8bpp) };    break;
-    case 16:  items = { items16bpp, countof(items16bpp) };  break;
-    case 32:  items = { items32bpp, countof(items32bpp) };  break;
-    case 64:
-        if (blockPixelSize == 4) // 4x4 block compressed.
+        switch (texelByteSize)
         {
-            items = { items64bppBc, countof(items64bppBc) };
+        default:
+        case 64:   items = { itemsVary64, countof(itemsVary64) };   break;
+        //case 128:  items = { itemsVary128, countof(itemsVary128) };  break;
         }
-        else // Pixels
-        {
-            items = { items64bpp, countof(items64bpp) };
-        }
-        break;
-    case 128:
-        if (blockPixelSize == 4) // 4x4 block compressed.
-        {
-            items = { items128bppBc, countof(items128bppBc) };
-        }
-        else // Pixels
-        {
-            items = { items128bpp, countof(items128bpp) };
-        }
-        break;
     }
-
+    else
+    {
+        switch (texelByteSize)
+        {
+        default:
+        case 8:   items = { items8bpp, countof(items8bpp) };    break;
+        case 16:  items = { items16bpp, countof(items16bpp) };  break;
+        case 32:  items = { items32bpp, countof(items32bpp) };  break;
+        case 64:
+            if (blockPixelSize == 4) // 4x4 block compressed.
+            {
+                items = { items64bppBc, countof(items64bppBc) };
+            }
+            else // Pixels
+            {
+                items = { items64bpp, countof(items64bpp) };
+            }
+            break;
+        case 128:
+            if (blockPixelSize == 4) // 4x4 block compressed.
+            {
+                items = { items128bppBc, countof(items128bppBc) };
+            }
+            else // Pixels
+            {
+                items = { items128bpp, countof(items128bpp) };
+            }
+            break;
+        }
+    }
+        
     return CustomSwizzle(width, height, x, y, items.data, items.count);
 }
 
@@ -846,11 +898,13 @@ uint32_t Xbox360ConvertToLinearTexture(uint32_t width, uint32_t height, uint32_t
 enum class SwizzleMode
 {
     Linear,
+    Block1x1,
     Block4x4,
     Block8x4,
     Block8x8,
     Block16x8,
     Block16x16,
+    Block32x32,
     D3DStandard8bpp,
     D3DStandard16bpp,
     D3DStandard32bpp,
@@ -858,6 +912,7 @@ enum class SwizzleMode
     D3DStandard64bppBc,
     D3DStandard128bpp,
     D3DStandard128bppBc,
+    D3DStandardVary,
     Ps2Unswizzle4bpp,
     Ps2Unswizzle8bpp,
     Ps2Unswizzle16bpp,
@@ -891,18 +946,21 @@ uint32_t GetSwizzledOffset(SwizzleMode swizzleMode, uint32_t width, uint32_t hei
     {
     default:
     case SwizzleMode::Linear:              return y * width + x;
+    case SwizzleMode::Block1x1:            return Block1x1Unswizzle(width, height, x, y);
     case SwizzleMode::Block4x4:            return Block4x4Unswizzle(width, height, x, y);
     case SwizzleMode::Block8x4:            return Block8x4Unswizzle(width, height, x, y);
     case SwizzleMode::Block8x8:            return Block8x8Unswizzle(width, height, x, y);
     case SwizzleMode::Block16x8:           return Block16x8Unswizzle(width, height, x, y);
     case SwizzleMode::Block16x16:          return Block16x16Unswizzle(width, height, x, y);
-    case SwizzleMode::D3DStandard8bpp:     return D3DStandardUnswizzle(width, height, x, y, 1, 8);
-    case SwizzleMode::D3DStandard16bpp:    return D3DStandardUnswizzle(width, height, x, y, 1, 16);
-    case SwizzleMode::D3DStandard32bpp:    return D3DStandardUnswizzle(width, height, x, y, 1, 32);
-    case SwizzleMode::D3DStandard64bpp:    return D3DStandardUnswizzle(width, height, x, y, 1, 64);
-    case SwizzleMode::D3DStandard64bppBc:  return D3DStandardUnswizzle(width, height, x, y, 4, 64);
-    case SwizzleMode::D3DStandard128bpp:   return D3DStandardUnswizzle(width, height, x, y, 1, 128);
-    case SwizzleMode::D3DStandard128bppBc: return D3DStandardUnswizzle(width, height, x, y, 4, 128);
+    case SwizzleMode::Block32x32:          return Block32x32Unswizzle(width, height, x, y);
+    case SwizzleMode::D3DStandard8bpp:     return D3DStandardUnswizzle(width, height, x, y, 1, 8, false);
+    case SwizzleMode::D3DStandard16bpp:    return D3DStandardUnswizzle(width, height, x, y, 1, 16, false);
+    case SwizzleMode::D3DStandard32bpp:    return D3DStandardUnswizzle(width, height, x, y, 1, 32, false);
+    case SwizzleMode::D3DStandard64bpp:    return D3DStandardUnswizzle(width, height, x, y, 1, 64, false);
+    case SwizzleMode::D3DStandard64bppBc:  return D3DStandardUnswizzle(width, height, x, y, 4, 64, false);
+    case SwizzleMode::D3DStandard128bpp:   return D3DStandardUnswizzle(width, height, x, y, 1, 128, false);
+    case SwizzleMode::D3DStandard128bppBc: return D3DStandardUnswizzle(width, height, x, y, 4, 128, false);
+    case SwizzleMode::D3DStandardVary:     return D3DStandardUnswizzle(width, height, x, y, 1, bitsPerPixel, true);
     case SwizzleMode::Ps2Unswizzle4bpp:    return Ps2Unswizzle4bpp(width, height, x, y);
     case SwizzleMode::Ps2Unswizzle8bpp:    return Ps2Unswizzle8bpp(width, height, x, y);
     case SwizzleMode::Ps2Unswizzle16bpp:   return Ps2Unswizzle16bpp(width, height, x, y);
@@ -975,13 +1033,96 @@ void DeswizzleD3D12_64KBRaw(BYTE* src, BYTE* dst, uint32_t width, uint32_t heigh
     return SwizzleMasterFunction(src, dst, width, height, bitsPerPixel, SwizzleMode::D3D12_64KBRaw);
 }
 
+void DeswizzlePSVitaRaw(BYTE* src, BYTE* dst, uint32_t width, uint32_t height, double bitsPerPixel)
+{
+    return SwizzleMasterFunction(src, dst, width, height, bitsPerPixel, SwizzleMode::Block32x32);
+}
+
+void DeswizzlePS4Raw(BYTE* src, BYTE* dst, uint32_t width, uint32_t height, double bitsPerPixel)
+{
+    return SwizzleMasterFunction(src, dst, width, height, bitsPerPixel, SwizzleMode::PS4Pixel);
+}
+
+void DeswizzlePS5DXT(BYTE* src, BYTE* dst, uint32_t width, uint32_t height, double bitsPerPixel)
+{
+    return SwizzleMasterFunction(src, dst, width, height, bitsPerPixel, SwizzleMode::D3DStandardVary);
+}
+
 ///////////////////////////////
-//   GENERAL CONVERT CODE    //
+//    VITA CONVERT CODE      //
 ///////////////////////////////
 
-// General format converts
+// source https://github.com/xdanieldzd/GXTConvert/blob/85821e7b9e5b1d0464404eec78d320c3a0e87deb/GXTConvert/Conversion/PostProcessing.cs#L97
 
-// Untiles DXT compressed blocks
+static int Compact1By1(int x)
+{
+    x &= 0x55555555;                 // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
+    x = (x ^ (x >> 1)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
+    x = (x ^ (x >> 2)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
+    x = (x ^ (x >> 4)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
+    x = (x ^ (x >> 8)) & 0x0000ffff; // x = ---- ---- ---- ---- fedc ba98 7654 3210
+    return x;
+}
+
+static int DecodeMorton2X(int code)
+{
+    return Compact1By1(code >> 0);
+}
+
+static int DecodeMorton2Y(int code)
+{
+    return Compact1By1(code >> 1);
+}
+
+// Vita Swizzle
+BYTE* convert_morton_psvita_dreamcast(const BYTE* pixel_data, BYTE* converted_data, int img_width, int img_height, int bpp, int block_w, int block_h, int block_size) {
+
+    int width_blocks = (img_width + (block_w - 1)) / block_w;
+
+    int height_blocks = (img_height + (block_h - 1)) / block_h;
+
+    int total_blocks = width_blocks * height_blocks;
+
+    int source_index = 0;
+
+    for (int t = 0; t < total_blocks; ++t) 
+    {
+        int min = width_blocks < height_blocks ? width_blocks : height_blocks;
+        int k = (int)(log(min) / log(2));
+
+        int x, y;
+        if (height_blocks < width_blocks)
+        {
+            // XXXyxyxyx → XXXxxxyyy
+            int j = t >> (2 * k) << (2 * k)
+                | (DecodeMorton2Y(t) & (min - 1)) << k
+                | (DecodeMorton2X(t) & (min - 1)) << 0;
+            x = j / height_blocks;
+            y = j % height_blocks;
+        }
+        else
+        {
+            // YYYyxyxyx → YYYyyyxxx
+            int j = t >> (2 * k) << (2 * k)
+                | (DecodeMorton2X(t) & (min - 1)) << k
+                | (DecodeMorton2Y(t) & (min - 1)) << 0;
+            x = j % width_blocks;
+            y = j / width_blocks;
+        }
+
+        if (y >= height_blocks || x >= width_blocks) continue;
+
+        memcpy(&converted_data[((y * width_blocks) + x) * block_size], &pixel_data[t * block_size], block_size);
+
+    }
+
+    return converted_data;
+}
+
+///////////////////////////////
+//  DX12 64kb CONVERT CODE   //
+///////////////////////////////
+
 void DeswizzleD3D12_64KBDXT(
     const BYTE* src,
     BYTE* dst,
@@ -1024,6 +1165,10 @@ void DeswizzleD3D12_64KBDXT(
         }
     }
 }
+
+///////////////////////////////
+//    DEPTH CONVERT CODE     //
+///////////////////////////////
 
 void ConvertDepth24Stencil8_to_24_24_24_8(const BYTE* src, BYTE* dst, uint32_t width, uint32_t height)
 {
@@ -1089,6 +1234,10 @@ void ConvertDepth8_to_8_8_8(const BYTE *src, BYTE *dst, uint32_t width, uint32_t
     }
 }
 
+///////////////////////////////
+//    SIGNED CONVERT CODE    //
+///////////////////////////////
+
 // Convert GL_R16I (signed 16-bit) to GL_R16 (unsigned 16-bit scaled)
 void ConvertR16I_to_R16(const BYTE *src, BYTE *dst, uint32_t width, uint32_t height)
 {
@@ -1116,6 +1265,10 @@ void ConvertR32I_to_R32UI(const BYTE *src, BYTE *dst, uint32_t width, uint32_t h
         dst32[i] = (uint32_t)(src32[i] + 2147483648U);
     }
 }
+
+///////////////////////////////
+//    FLOAT CONVERT CODE     //
+///////////////////////////////
 
 // Helper to decode 11-bit or 10-bit float values into 32-bit float
 static float decode_packed_float(uint32_t packed, int bits)
@@ -1242,8 +1395,32 @@ void ConvertDepth32Stencil8_to_RGBA32f(const BYTE *src, BYTE *dst, uint32_t widt
             rgba_array[(y * width * 4) + (x * 4) + 3] = stencil_value;// A component, copy of the stencil value.
         }
     }
-
 }
+
+void ConvertGray8Alpha8_to_8_8_8_8(const BYTE* src, BYTE* dst, uint32_t width, uint32_t height)
+{
+    for (size_t y = 0; y < height; ++y) {
+        for (size_t x = 0; x < width; ++x) {
+            // Calculate the index in the R8A8 buffer
+            uint8_t r8a8_index = y * width + x;
+
+            // Extract the individual bytes from the R8A8 buffer
+            uint8_t red = src[r8a8_index];
+            uint8_t alpha = src[r8a8_index + 1];
+
+            // Convert to R8G8B8A8 format by interleaving the red and green components
+            uint8_t r8g8b8a8_index = (y * width + x) * 4;
+            dst[r8g8b8a8_index] = red; // Red component
+            dst[r8g8b8a8_index + 1] = red; // Green component
+            dst[r8g8b8a8_index + 2] = red; // Blue component
+            dst[r8g8b8a8_index + 3] = alpha; // Alpha component
+        }
+    }
+}
+
+///////////////////////////////
+//   PALETTE CONVERT CODE    //
+///////////////////////////////
 
 // Here for when we find these formats
 // Convert swizzled P4 (4-bit indexed) texture to RGBA32
@@ -1293,6 +1470,10 @@ void ConvertP14_to_RGBA32(const BYTE* src, const uint32_t* tlut, BYTE* dstByte, 
         dst[i] = tlut[index];
     }
 }
+
+///////////////////////////////
+//     sRGB CONVERT CODE     //
+///////////////////////////////
 
 // Apply sRGB gamma curve to a linear channel value (0–255)
 static uint8_t linear_to_srgb(uint8_t c)
@@ -1355,6 +1536,79 @@ void sRGBA_to_RGBA(BYTE* src, uint32_t pixelCount)
 
         pixels[i] = (a << 24) | (b << 16) | (g << 8) | r;
     }
+}
+
+///////////////////////////////
+//    CHANNEL FLIP CODE      //
+///////////////////////////////
+
+// Flip channel order in a format string (e.g., "r8g8b8a8" → "b8g8r8a8")
+static int ChannelBlockLen(const char* start)
+{
+    int len = 1; // include channel char (e.g., 'r')
+    while (start[len] && start[len] != 'r' && start[len] != 'g' && start[len] != 'b' && start[len] != 'a')
+        len++;
+    return len;
+}
+
+// Flip channel order in a format string based on dynamic detection
+void FlipChannelOrder(char* str, bool include_alpha)
+{
+    struct ChannelBlock {
+        char label;
+        char* ptr;
+        int len;
+    } blocks[4];
+
+    int count = 0;
+    char* p = str;
+    while (*p && count < 4)
+    {
+        if (*p == 'r' || *p == 'g' || *p == 'b' || *p == 'a') {
+            if (!include_alpha && *p == 'a') {
+                p++;
+                continue;
+            }
+            blocks[count].label = *p;
+            blocks[count].ptr = p;
+            blocks[count].len = ChannelBlockLen(p);
+            p += blocks[count].len;
+            count++;
+        }
+        else {
+            p++;
+        }
+    }
+
+    if (count < 3) return; // require at least r/g/b
+
+    // sort channels to reverse order
+    for (int i = 0; i < count / 2; ++i) {
+        struct ChannelBlock temp = blocks[i];
+        blocks[i] = blocks[count - 1 - i];
+        blocks[count - 1 - i] = temp;
+    }
+
+    // determine full replacement range
+    char* start = blocks[0].ptr;
+    char* end = blocks[0].ptr + blocks[0].len;
+    for (int i = 1; i < count; ++i) {
+        if (blocks[i].ptr < start) start = blocks[i].ptr;
+        if (blocks[i].ptr + blocks[i].len > end) end = blocks[i].ptr + blocks[i].len;
+    }
+
+    char tail[64] = { 0 };
+    strncpy(tail, end, sizeof(tail) - 1);
+
+    char temp[64] = { 0 };
+    char* out = temp;
+    for (int i = 0; i < count; ++i) {
+        strncat(out, blocks[i].ptr, blocks[i].len);
+        out += blocks[i].len;
+    }
+    strncat(out, tail, sizeof(temp) - strlen(temp) - 1);
+
+    strcpy(start, temp);
 }
 
 ///////////////////////////////
@@ -1469,8 +1723,6 @@ typedef struct {
     uint8_t compSel[4];
     uint32_t texRegs[5];
 } GX2Surface;
-
-
 
 uint32_t nextPow2(uint32_t dim)
 {
@@ -3229,6 +3481,11 @@ BYTE* swizzleSurf(uint32_t width, uint32_t height, uint32_t depth, uint32_t form
     long pos;
 
     BYTE* result = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize);
+    if (!result)
+    {
+        PopUpMessage(L"ERROR!! result alloc\n");
+        assert(0 && "result did not alloc!");
+    }
     
     if (IsFormatBCN(format))
     {
@@ -3534,7 +3791,7 @@ void GenerateMipOffsets(GX2Surface* tex, Gx2SurfaceIn* pIn, Gx2SurfaceOut* pOut)
     }
 }
 
-// Starting here
+// Nintendo Wii U Starting here
 // https://github.com/KillzXGaming/Switch-Toolbox/blob/16de585c7b998826e39ac88915f64554c0025423/Switch_Toolbox_Library/Texture%20Decoding/Wii%20U/GX2.cs#L697
 BYTE* Gx2Decode(GX2Surface tex, uint32_t ArrayIndex, uint32_t MipIndex, noeRAPI_t* rapi)
 {
@@ -3566,6 +3823,12 @@ BYTE* Gx2Decode(GX2Surface tex, uint32_t ArrayIndex, uint32_t MipIndex, noeRAPI_
     //    tex.data = tex.mipData;
 
     BYTE* data = (BYTE*)rapi->Noesis_UnpooledAlloc(tex.imageSize); // must free
+    if (!data)
+    {
+        PopUpMessage(L"ERROR!! data alloc\n");
+        assert(0 && "data did not alloc!");
+    }
+        
     BYTE* mipdata = data; // not going to use mips
 
     uint32_t mipCount = tex.numMips;
@@ -3622,6 +3885,11 @@ BYTE* Gx2Decode(GX2Surface tex, uint32_t ArrayIndex, uint32_t MipIndex, noeRAPI_
                BYTE* deswizzled = wiiUdeswizzle(width_, height_, MipSurfInfo.depth, MipSurfInfo.height, tex.format, 0, tex.use,
                     MipSurfInfo.tileMode, swizzle, MipSurfInfo.pitch, MipSurfInfo.bpp, arrayLevel, 0, data, tex.imageSize, rapi);
                BYTE* result_ = (BYTE*)rapi->Noesis_UnpooledAlloc(size);
+               if (!result_)
+               {
+                   PopUpMessage(L"ERROR!! result_ alloc\n");
+                   assert(0 && "result_ did not alloc!");
+               }
                memcpy(result_, deswizzled, size);
                rapi->Noesis_UnpooledFree(data);
                rapi->Noesis_UnpooledFree(deswizzled);
@@ -3634,5 +3902,649 @@ BYTE* Gx2Decode(GX2Surface tex, uint32_t ArrayIndex, uint32_t MipIndex, noeRAPI_
     }
     return NULL;
 }
+
+///////////////////////////////
+//     X360 SWIZZLE CODE     //
+///////////////////////////////
+
+// source https://github.com/bartlomiejduda/ReverseBox
+
+void short_swap_byte_order(uint8_t* data, size_t size) {
+    uint16_t* tmp = (uint16_t*)(data);
+    for (uint32_t i = 0; i < size / 2; i++)
+    {
+        LITTLE_BIG_SWAP(tmp[i]);
+    }
+}
+
+void long_swap_byte_order(uint8_t* data, size_t size) {
+    uint32_t* tmp = (uint32_t*)(data);
+    for (uint32_t i = 0; i < size / 4; i++)
+    {
+        LITTLE_BIG_SWAP(tmp[i]);
+    }
+}
+
+static int xg_address_2d_tiled_x(int block_offset, int width_in_blocks, int texel_byte_pitch) {
+    int aligned_width = (width_in_blocks + 31) & ~31;
+    int log_bpp = (texel_byte_pitch >> 2) + ((texel_byte_pitch >> 1) >> (texel_byte_pitch >> 2));
+    int offset_byte = block_offset << log_bpp;
+    int offset_tile = (((offset_byte & ~0xFFF) >> 3) + ((offset_byte & 0x700) >> 2) + (offset_byte & 0x3F));
+    int offset_macro = offset_tile >> (7 + log_bpp);
+
+    int macro_x = (offset_macro % (aligned_width >> 5)) << 2;
+    int tile = (((offset_tile >> (5 + log_bpp)) & 2) + (offset_byte >> 6)) & 3;
+    int macro = (macro_x + tile) << 3;
+    int micro = ((((offset_tile >> 1) & ~0xF) + (offset_tile & 0xF)) & ((texel_byte_pitch << 3) - 1)) >> log_bpp;
+
+    return macro + micro;
+}
+
+static int xg_address_2d_tiled_y(int block_offset, int width_in_blocks, int texel_byte_pitch) {
+    int aligned_width = (width_in_blocks + 31) & ~31;
+    int log_bpp = (texel_byte_pitch >> 2) + ((texel_byte_pitch >> 1) >> (texel_byte_pitch >> 2));
+    int offset_byte = block_offset << log_bpp;
+    int offset_tile = (((offset_byte & ~0xFFF) >> 3) + ((offset_byte & 0x700) >> 2) + (offset_byte & 0x3F));
+    int offset_macro = offset_tile >> (7 + log_bpp);
+
+    int macro_y = (offset_macro / (aligned_width >> 5)) << 2;
+    int tile = ((offset_tile >> (6 + log_bpp)) & 1) + ((offset_byte & 0x800) >> 10);
+    int macro = (macro_y + tile) << 3;
+    int micro = (((offset_tile & ((texel_byte_pitch << 6) - 1 & ~0x1F)) + ((offset_tile & 0xF) << 1)) >> (3 + log_bpp)) & ~1;
+
+    return macro + micro + ((offset_tile & 0x10) >> 4);
+}
+
+void convert_x360_image_data(uint8_t* dst, const uint8_t* src, int image_width, int image_height, int block_pixel_size, int texel_byte_pitch, bool swizzle) {
+    int width_in_blocks = image_width / block_pixel_size;
+    int height_in_blocks = image_height / block_pixel_size;
+
+    for (int j = 0; j < height_in_blocks; ++j) {
+        for (int i = 0; i < width_in_blocks; ++i) {
+            int block_offset = j * width_in_blocks + i;
+            int x = xg_address_2d_tiled_x(block_offset, width_in_blocks, texel_byte_pitch);
+            int y = xg_address_2d_tiled_y(block_offset, width_in_blocks, texel_byte_pitch);
+            int src_offset = (j * width_in_blocks + i) * texel_byte_pitch;
+            int dst_offset = (y * width_in_blocks + x) * texel_byte_pitch;
+
+            if (dst_offset + texel_byte_pitch > image_width * image_height) continue;
+
+            if (swizzle) {
+                memcpy(&dst[src_offset], &src[dst_offset], texel_byte_pitch);
+            }
+            else {
+                memcpy(&dst[dst_offset], &src[src_offset], texel_byte_pitch);
+            }
+        }
+    }
+}
+
+void unswizzle_x360(uint8_t* dst, uint8_t* src, size_t size, int width, int height, int block_pixel_size, int texel_byte_pitch) {
+    memcpy(dst, src, size);
+    short_swap_byte_order(src, size);
+    convert_x360_image_data(dst, src, width, height, block_pixel_size, texel_byte_pitch, false);
+}
+
+///////////////////////////////
+//      Wii SWIZZLE CODE     //
+///////////////////////////////
+
+// Source:
+// https://github.com/Kerilk/noesis_bayonetta_pc/blob/master/bayonetta_pc/tpl.h
+// Implements:
+// http://wiki.tockdom.com/wiki/TPL_%28File_Format%29
+// And:
+// http://wiki.tockdom.com/wiki/Image_Formats
+// With help from
+// https://github.com/Zheneq/Noesis-Plugins/blob/master/lib_zq_nintendo_tex.py
+
+enum class tplFormats_e: int {
+    I4 = 0,
+    I8,
+    IA4,
+    IA8,
+    RGB565,
+    RGB5A3,
+    RGBA32,
+    C4 = 8,
+    C8,
+    C14X2,
+    CMPR = 0xE //BC1
+};
+
+static constexpr tplFormats_e tplPaletteFormatTable[] = {
+    tplFormats_e::IA8,
+    tplFormats_e::RGB565,
+    tplFormats_e::RGB5A3
+};
+
+static constexpr int tplBPP[] = {
+     4,
+     8,
+     8,
+    16,
+    16,
+    16,
+    32,
+    -1,
+     4,
+     8,
+    16,
+    -1,
+    -1,
+    -1,
+     4
+};
+
+static constexpr int tplBlockWidth[] = {
+     8,
+     8,
+     8,
+     4,
+     4,
+     4,
+     4,
+    -1,
+     8,
+     8,
+     4,
+    -1,
+    -1,
+    -1,
+     8
+};
+
+static constexpr int tplBlockHeight[] = {
+     8,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+    -1,
+     8,
+     4,
+     4,
+    -1,
+    -1,
+    -1,
+     8,
+};
+
+static constexpr int tplBlockSize[] = {
+    32,
+    32,
+    32,
+    32,
+    32,
+    32,
+    64,
+    -1,
+    32,
+    32,
+    32,
+    -1,
+    -1,
+    -1,
+    32
+};
+
+template<int bpp, int blockWidth>
+inline void tplComputePixelAddress(void*& pPixel, void* src, unsigned int i, unsigned int j) {
+    unsigned int offset;
+    if (bpp == 4)
+        offset = i * (blockWidth >> 1) + (j >> 1);
+    else
+        offset = i * blockWidth * (bpp / 8) + j * (bpp / 8);
+    pPixel = (void*)((BYTE*)src + offset);
+}
+
+template<int bpp>
+inline void tplExtractPixelBits(unsigned int& v, void* src, bool even = true) {
+    unsigned char  tuc;
+    unsigned short tus;
+    unsigned int   tui;
+    switch (bpp) {
+    case 32:
+        tui = *(unsigned int*)src;
+        LITTLE_BIG_SWAP(tui);
+        v = tui;
+        break;
+    case 16:
+        tus = *(unsigned short*)src;
+        LITTLE_BIG_SWAP(tus);
+        v = tus;
+        break;
+    case 8:
+        tuc = *(unsigned char*)src;
+        v = tuc;
+        break;
+    case 4:
+        tuc = *(unsigned char*)src;
+        if (even)
+            tuc >>= 4;
+        v = tuc & 0xf;
+        break;
+    }
+}
+
+template <tplFormats_e f>
+inline void tplReadPixelValue(unsigned int v, unsigned char& r, unsigned char& g, unsigned char& b, unsigned char& a);
+
+template <>
+inline void tplReadPixelValue<tplFormats_e::I4>(unsigned int v, unsigned char& r, unsigned char& g, unsigned char& b, unsigned char& a) {
+    r = g = b = v * 0xff / 0xf;;
+    a = 0xff;
+}
+
+template <>
+inline void tplReadPixelValue<tplFormats_e::I8>(unsigned int v, unsigned char& r, unsigned char& g, unsigned char& b, unsigned char& a) {
+    r = g = b = v;
+    a = 0xff;
+}
+
+template <>
+inline void tplReadPixelValue<tplFormats_e::IA4>(unsigned int v, unsigned char& r, unsigned char& g, unsigned char& b, unsigned char& a) {
+    r = g = b = (v & 0xf) * 0xff / 0xf;
+    a = (v >> 4) * 0xff / 0xf;
+}
+
+template <>
+inline void tplReadPixelValue<tplFormats_e::IA8>(unsigned int v, unsigned char& r, unsigned char& g, unsigned char& b, unsigned char& a) {
+    r = g = b = v & 0xff;
+    a = v >> 8;
+}
+
+template <>
+inline void tplReadPixelValue<tplFormats_e::RGB565>(unsigned int v, unsigned char& r, unsigned char& g, unsigned char& b, unsigned char& a) {
+    r = ((v >> 11) & 0x1f) * 0xff / 0x1f;
+    g = ((v >> 5) & 0x3f) * 0xff / 0x3f;
+    b = ((v >> 0) & 0x1f) * 0xff / 0x1f;
+    a = 0xff;
+}
+
+template <>
+inline void tplReadPixelValue<tplFormats_e::RGB5A3>(unsigned int v, unsigned char& r, unsigned char& g, unsigned char& b, unsigned char& a) {
+    if (v & 0x8000) {
+        r = ((v >> 10) & 0x1f) * 0xff / 0x1f;
+        g = ((v >> 5) & 0x1f) * 0xff / 0x1f;
+        b = ((v >> 0) & 0x1f) * 0xff / 0x1f;
+        a = 0xff;
+    }
+    else {
+        a = ((v >> 12) & 0x7) * 0xff / 0x7; //contradictory information between sources here
+        r = ((v >> 8) & 0xf) * 0xff / 0xf;
+        g = ((v >> 4) & 0xf) * 0xff / 0xf;
+        b = ((v >> 0) & 0xf) * 0xff / 0xf;
+    }
+}
+
+template <tplFormats_e f>
+inline void tplDecodePixel(void* src, unsigned int i, unsigned int j, unsigned char& r, unsigned char& g, unsigned char& b, unsigned char& a) {
+    void* d;
+    unsigned int v;
+    tplComputePixelAddress<tplBPP[(int)f], tplBlockWidth[(int)f]>(d, src, i, j);
+    tplExtractPixelBits<tplBPP[(int)f]>(v, d, !(j & 0x1));
+    tplReadPixelValue<f>(v, r, g, b, a);
+}
+
+template <>
+inline void tplDecodePixel<tplFormats_e::RGBA32>(void* src, unsigned int i, unsigned int j, unsigned char& r, unsigned char& g, unsigned char& b, unsigned char& a) {
+    unsigned char* ar = (unsigned char*)src + i * 8 + j * 2;
+    unsigned char* gb = (unsigned char*)src + 32 + i * 8 + j * 2;
+    a = ar[0];
+    r = ar[1];
+    g = gb[0];
+    b = gb[1];
+}
+
+void tplWritePixel(void* dst, unsigned int i, unsigned int j, size_t ld, unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
+    unsigned char* p = (unsigned char*)dst + i * ld + j * 4;
+    p[0] = r;
+    p[1] = g;
+    p[2] = b;
+    p[3] = a;
+}
+
+template <tplFormats_e f>
+void tplDecodeBlock(void* dst, void* src, unsigned height, unsigned int width, size_t ld) {
+    for (unsigned int i = 0; i < height; i++) {
+        for (unsigned int j = 0; j < width; j++) {
+            unsigned char r, g, b, a;
+            //LogDebug("Decoding pixel %i %i, ", i, j);
+            tplDecodePixel<f>(src, i, j, r, g, b, a);
+            //LogDebug("r: %02x, g: %02x, b: %02x, a: %02x\n", r, g, b, a);
+            tplWritePixel(dst, i, j, ld, r, g, b, a);
+        }
+    }
+}
+
+template <tplFormats_e f>
+inline void tplDecodePaletteIndex(unsigned int& v, void* src, unsigned int i, unsigned int j) {
+    void* d;
+    tplComputePixelAddress<tplBPP[(int)f], tplBlockWidth[(int)f]>(d, src, i, j);
+    //LogDebug("\t\t\t%p\n", d);
+    tplExtractPixelBits<tplBPP[(int)f]>(v, d, !(j & 0x1));
+}
+
+inline void tplReadPaletteValue(unsigned int& v, void* palette, unsigned int index) {
+    unsigned short int t = *((unsigned short int*)palette + index);
+    LITTLE_BIG_SWAP(t);
+    v = t;
+}
+
+template <tplFormats_e f, tplPaletteFormats_e pf>
+inline void tplDecodePalettePixel(void* src, void* palette, unsigned int i, unsigned int j, unsigned char& r, unsigned char& g, unsigned char& b, unsigned char& a) {
+    unsigned int v;
+    tplDecodePaletteIndex<f>(v, src, i, j);
+    //LogDebug("\t\t\t%d %d: %d\n", i, j, v);
+    tplReadPaletteValue(v, palette, v);
+    tplReadPixelValue<tplPaletteFormatTable[(int)pf]>(v, r, g, b, a);
+}
+
+template <tplFormats_e f, tplPaletteFormats_e pf>
+void tplDecodePaletteBlock(void* dst, void* src, void* palette, unsigned int height, unsigned int width, size_t ld) {
+    for (unsigned int i = 0; i < height; i++) {
+        for (unsigned int j = 0; j < width; j++) {
+            unsigned char r, g, b, a;
+            tplDecodePalettePixel<f, pf>(src, palette, i, j, r, g, b, a);
+            tplWritePixel(dst, i, j, ld, r, g, b, a);
+        }
+    }
+}
+
+inline void tplDecodeCMPRSubBlock(void* dst, void* src) {
+    unsigned short c0 = *((unsigned short*)src + 0);
+    unsigned short c1 = *((unsigned short*)src + 1);
+    LITTLE_BIG_SWAP(c0);
+    LITTLE_BIG_SWAP(c1);
+    unsigned char vc[4][4];
+    tplReadPixelValue<tplFormats_e::RGB565>((unsigned int)c0, vc[0][0], vc[0][1], vc[0][2], vc[0][3]);
+    tplReadPixelValue<tplFormats_e::RGB565>((unsigned int)c1, vc[1][0], vc[1][1], vc[1][2], vc[1][3]);
+    if (c0 > c1) {
+        for (int i = 0; i < 4; i++) {
+            vc[2][i] = ((int)vc[1][i] + 2 * vc[0][i]) / 3;
+            vc[3][i] = ((int)vc[0][i] + 2 * vc[1][i]) / 3;
+        }
+    }
+    else {
+        for (int i = 0; i < 4; i++) {
+            vc[2][i] = ((int)vc[0][i] + vc[1][i]) / 2;
+            vc[3][i] = 0;
+        }
+    }
+    for (int i = 0; i < 4; i++) {
+        unsigned char v = *((unsigned char*)src + 4 + i);
+        for (int j = 0; j < 4; j++) {
+            unsigned char indx = (v >> (6 - 2 * j)) & 0x3;
+            memcpy((char*)dst + 8 * 4 * i + 4 * j, &(vc[indx][0]), 4);
+        }
+    }
+}
+
+template <>
+inline void tplDecodeBlock<tplFormats_e::CMPR>(void* dst, void* src, unsigned int height, unsigned int width, size_t ld) {
+    unsigned char buff[8][8][4];
+    tplDecodeCMPRSubBlock(&(buff[0][0][0]), (unsigned char*)src);
+    tplDecodeCMPRSubBlock(&(buff[0][4][0]), (unsigned char*)src + 8);
+    tplDecodeCMPRSubBlock(&(buff[4][0][0]), (unsigned char*)src + 16);
+    tplDecodeCMPRSubBlock(&(buff[4][4][0]), (unsigned char*)src + 24);
+    for (unsigned int i = 0; i < height; i++) {
+        for (unsigned int j = 0; j < width; j++) {
+            tplWritePixel(dst, i, j, ld, buff[i][j][0], buff[i][j][1], buff[i][j][2], buff[i][j][3]);
+        }
+    }
+}
+
+// Wii Swizzle
+void tplDecodeImage(void* dst, void* src, unsigned int width, unsigned int height, tplFormats_e f, tplPaletteFormats_e pf = tplPaletteFormats_e::PIA8, void* palette = NULL) {
+    unsigned int block_width = tplBlockWidth[(int)f];
+    unsigned int block_height = tplBlockHeight[(int)f];
+    unsigned int remainder_width = width % block_width;
+    unsigned int remainder_height = height % block_height;
+    unsigned int n_block_width = (width + (remainder_width ? block_width - remainder_width : 0)) / block_width;
+    unsigned int n_block_height = (height + (remainder_height ? block_height - remainder_height : 0)) / block_height;
+    unsigned int last_block_width = remainder_width ? remainder_width : block_width;
+    unsigned int last_block_height = remainder_height ? remainder_height : block_height;
+    //LogDebug("dst: %p, src: %p, format: %d, palette: %p, block_height: %d, block_width: %d, n_block_height: %d, n_block_width: %d, remainder_height: %d, remainder_width: %d\n", dst, src, f, palette, block_height, block_width, n_block_height, n_block_width, remainder_height, remainder_width);
+    size_t ld = 4 * width;
+    for (unsigned int i = 0; i < n_block_height; i++) {
+        for (unsigned int j = 0; j < n_block_width; j++) {
+            unsigned char* pdst = (unsigned char*)dst + i * block_height * ld + j * block_width * 4;
+            unsigned char* psrc = (unsigned char*)src + tplBlockSize[(int)f] * (j + n_block_width * i);
+            unsigned int bh = (i == n_block_height - 1 ? last_block_height : block_height);
+            unsigned int bw = (j == n_block_width - 1 ? last_block_width : block_width);
+            //LogDebug("Decoding block %d %d, pdst: %p, psrc: %p, block_height: %d, block_width: %d, ld: %d\n", i, j, pdst, psrc, bh, bw, ld);
+            switch (f) {
+            case tplFormats_e::I4:
+                tplDecodeBlock<tplFormats_e::I4>(pdst, psrc, bh, bw, ld);
+                break;
+            case tplFormats_e::I8:
+                tplDecodeBlock<tplFormats_e::I8>(pdst, psrc, bh, bw, ld);
+                break;
+            case tplFormats_e::IA4:
+                tplDecodeBlock<tplFormats_e::IA4>(pdst, psrc, bh, bw, ld);
+                break;
+            case tplFormats_e::IA8:
+                tplDecodeBlock<tplFormats_e::IA8>(pdst, psrc, bh, bw, ld);
+                break;
+            case tplFormats_e::RGB565:
+                tplDecodeBlock<tplFormats_e::RGB565>(pdst, psrc, bh, bw, ld);
+                break;
+            case tplFormats_e::RGB5A3:
+                tplDecodeBlock<tplFormats_e::RGB5A3>(pdst, psrc, bh, bw, ld);
+                break;
+            case tplFormats_e::RGBA32:
+                tplDecodeBlock<tplFormats_e::RGBA32>(pdst, psrc, bh, bw, ld);
+                break;
+            case tplFormats_e::CMPR:
+                tplDecodeBlock<tplFormats_e::CMPR>(pdst, psrc, bh, bw, ld);
+                break;
+            case tplFormats_e::C4:
+                switch (pf) {
+                case tplPaletteFormats_e::PIA8:
+                    tplDecodePaletteBlock<tplFormats_e::C4, tplPaletteFormats_e::PIA8>(pdst, psrc, palette, bh, bw, ld);
+                    break;
+                case tplPaletteFormats_e::PRGB565:
+                    tplDecodePaletteBlock<tplFormats_e::C4, tplPaletteFormats_e::PRGB565>(pdst, psrc, palette, bh, bw, ld);
+                    break;
+                case tplPaletteFormats_e::PRGB5A3:
+                    tplDecodePaletteBlock<tplFormats_e::C4, tplPaletteFormats_e::PRGB5A3>(pdst, psrc, palette, bh, bw, ld);
+                    break;
+                }
+                break;
+            case tplFormats_e::C8:
+                switch (pf) {
+                case tplPaletteFormats_e::PIA8:
+                    tplDecodePaletteBlock<tplFormats_e::C8, tplPaletteFormats_e::PIA8>(pdst, psrc, palette, bh, bw, ld);
+                    break;
+                case tplPaletteFormats_e::PRGB565:
+                    tplDecodePaletteBlock<tplFormats_e::C8, tplPaletteFormats_e::PRGB565>(pdst, psrc, palette, bh, bw, ld);
+                    break;
+                case tplPaletteFormats_e::PRGB5A3:
+                    tplDecodePaletteBlock<tplFormats_e::C8, tplPaletteFormats_e::PRGB5A3>(pdst, psrc, palette, bh, bw, ld);
+                    break;
+                }
+                break;
+            case tplFormats_e::C14X2:
+                switch (pf) {
+                case tplPaletteFormats_e::PIA8:
+                    tplDecodePaletteBlock<tplFormats_e::C14X2, tplPaletteFormats_e::PIA8>(pdst, psrc, palette, bh, bw, ld);
+                    break;
+                case tplPaletteFormats_e::PRGB565:
+                    tplDecodePaletteBlock<tplFormats_e::C14X2, tplPaletteFormats_e::PRGB565>(pdst, psrc, palette, bh, bw, ld);
+                    break;
+                case tplPaletteFormats_e::PRGB5A3:
+                    tplDecodePaletteBlock<tplFormats_e::C14X2, tplPaletteFormats_e::PRGB5A3>(pdst, psrc, palette, bh, bw, ld);
+                    break;
+                }
+                break;
+            }
+        }
+    }
+}
+
+///////////////////////////////
+//      PS5 SWIZZLE CODE     //
+///////////////////////////////
+
+// Source id-daemon RawTex Cooker
+
+static int PS5morton(int t, int sx, int sy)
+{
+    int num1;
+    int num2 = num1 = 1;
+    int num3 = t;
+    int num4 = sx;
+    int num5 = sy;
+    int num6 = 0;
+    int num7 = 0;
+    while (num4 > 1 || num5 > 1)
+    {
+        if (num4 > 1)
+        {
+            num6 += num2 * (num3 & 1);
+            num3 >>= 1;
+            num2 *= 2;
+            num4 >>= 1;
+        }
+        if (num5 > 1)
+        {
+            num7 += num1 * (num3 & 1);
+            num3 >>= 1;
+            num1 *= 2;
+            num5 >>= 1;
+        }
+    }
+    return num7 * sx + num6;
+};
+
+void UnswizzlePS5(BYTE* swizzledData, BYTE* output, uint32_t dataSize, uint32_t width, uint32_t height, int blockWidth, int blockHeight, float bitsPerPixel, uint32_t sourceBytesPerPixelSet, bool bCompressedFormat, noeRAPI_t* rapi)
+{
+    BYTE* tempBuffer = (BYTE*)rapi->Noesis_UnpooledAlloc(128);
+    if (!tempBuffer)
+    {
+        PopUpMessage(L"ERROR!! copyBlock alloc\n");
+        return;
+    }
+    int swizzleDivisor = 1;
+    uint32_t horizontalPixelBlockCount = width;
+    uint32_t verticalPixelBlockCount = height;
+    
+    if (bCompressedFormat)
+    {
+        horizontalPixelBlockCount = (width + (blockWidth - 1)) / blockWidth;
+        verticalPixelBlockCount = (height + (blockHeight - 1)) / blockHeight;
+    }
+    BYTE* outBuffer = (BYTE*)rapi->Noesis_UnpooledAlloc(dataSize * 2);
+    if (!outBuffer)
+    {
+        PopUpMessage(L"ERROR!! outputBuffer alloc\n");
+        return;
+    }
+    if (sourceBytesPerPixelSet == 16)
+    {  // BC7
+        swizzleDivisor = 1;    // 256, morton 16 16
+    }
+    if (sourceBytesPerPixelSet == 8)
+    {  // BC1 / BC4
+        swizzleDivisor = 2;    // t = 128,  morton 16 8
+    }
+    if (sourceBytesPerPixelSet == 4)
+    { // 2 bytes
+        swizzleDivisor = 4; // t = 64,  morton 16 4
+    }
+    size_t streamPos = 0;
+    //if (false) // didn't work
+    //{
+    //    for (int h = 0; h < (verticalPixelBlockCount + 7) / 8; ++h)
+    //    {
+    //        for (int w = 0; w < (horizontalPixelBlockCount + 7) / 8; ++w)
+    //        {
+    //            for (int t = 0; t < 64; ++t)
+    //            {
+    //                int mortonIndex = PS5morton(t, 8, 8);
+    //                int mortonH = mortonIndex / 8;
+    //                int mortonW = mortonIndex % 8;
+    //                memcpy(tempBuffer, &swizzledData[streamPos], sourceBytesPerPixelSet); streamPos += sourceBytesPerPixelSet;
+    //                //input.Read(copyBlock, 0, bytesPerBlock);
+    //                if (w * 8 + mortonW < horizontalPixelBlockCount && h * 8 + mortonH < verticalPixelBlockCount)
+    //                {
+    //                    int destinationIndex = sourceBytesPerPixelSet * ((h * 8 + mortonH) * horizontalPixelBlockCount + w * 8 + mortonW);
+    //                    memcpy(&outBuffer[destinationIndex], tempBuffer, sourceBytesPerPixelSet);
+    //                    //Array.Copy((Array)copyBlock, 0, (Array)outputBuffer, destinationIndex, bytesPerBlock);
+    //                }
+    //            }
+    //        }
+    //    }
+    //}
+    if (blockWidth == 1) // raw
+    {
+        for (int h = 0; h < (verticalPixelBlockCount + 127 /*sbyte.MaxValue*/) / 128; ++h)
+        {
+            for (int w = 0; w < (horizontalPixelBlockCount + 127 /*sbyte.MaxValue*/) / 128; ++w)
+            {
+                for (int t = 0; t < 512; ++t)
+                {
+                    int mortonIndex = PS5morton(t, 32, 16);
+                    int mortonW = mortonIndex % 32;
+                    int mortonH = mortonIndex / 32;
+                    for (int subMortonIndex = 0; subMortonIndex < 32; ++subMortonIndex)
+                    {
+                        memcpy(tempBuffer, &swizzledData[streamPos], sourceBytesPerPixelSet); 
+                        streamPos += sourceBytesPerPixelSet;
+                        //input.Read(copyBlock, 0, bytesPerBlock);
+                        int currentHorizontalPixelBlock = w * 128 + mortonW * 4 + subMortonIndex % 4;
+                        int currentVerticalPixelBlock = h * 128 + (mortonH * 8 + subMortonIndex / 4);
+                        if (currentHorizontalPixelBlock < horizontalPixelBlockCount && currentVerticalPixelBlock < verticalPixelBlockCount)
+                        {
+                            int destinationIndex = sourceBytesPerPixelSet * (currentVerticalPixelBlock * horizontalPixelBlockCount + currentHorizontalPixelBlock);
+                            memcpy(&outBuffer[destinationIndex], tempBuffer, sourceBytesPerPixelSet);
+                            //Array.Copy((Array)copyBlock, 0, (Array)outputBuffer, destinationIndex, bytesPerBlock);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        for (int h = 0; h < (verticalPixelBlockCount + 63) / 64; ++h)
+        {
+            for (int w = 0; w < (horizontalPixelBlockCount + 63) / 64; ++w)
+            {
+                for (int t = 0; t < 256 / swizzleDivisor; ++t)
+                {
+                    int mortonIndex = PS5morton(t, 16, 16 / swizzleDivisor);
+                    int mortonW = mortonIndex / 16;
+                    int mortonH = mortonIndex % 16;
+                    for (int subTile1 = 0; subTile1 < 16; ++subTile1)
+                    {
+                        for (int subTile2 = 0; subTile2 < swizzleDivisor; ++subTile2)
+                        {
+                            memcpy(tempBuffer, &swizzledData[streamPos], sourceBytesPerPixelSet); 
+                            streamPos += sourceBytesPerPixelSet;
+                            //input.Read(copyBlock, 0, bytesPerBlock);
+                            int currentHorizontalPixelBlock = w * 64 + (mortonW * 4 + subTile1 / 4) * swizzleDivisor + subTile2;
+                            int currentVerticalPixelBlock = h * 64 + mortonH * 4 + subTile1 % 4;
+                            if (currentHorizontalPixelBlock < horizontalPixelBlockCount && currentVerticalPixelBlock < verticalPixelBlockCount)
+                            {
+                                int destinationIndex = sourceBytesPerPixelSet * (currentVerticalPixelBlock * horizontalPixelBlockCount + currentHorizontalPixelBlock);
+                                memcpy(&outBuffer[destinationIndex], tempBuffer, sourceBytesPerPixelSet);
+                                //Array.Copy((Array)copyBlock, 0, (Array)outputBuffer, destinationIndex, bytesPerBlock);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    memcpy(output, outBuffer, dataSize);
+    rapi->Noesis_UnpooledFree(outBuffer);
+    rapi->Noesis_UnpooledFree(tempBuffer);
+    //output.Write(outputBuffer, 0, sizeInBytes);
+}
+
 
 #endif // !G1T_FORMAT_CONVERT_H
