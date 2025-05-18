@@ -33,7 +33,7 @@ const char* g_pPluginName = "ProjectG1M";
 const char* g_pPluginDesc = "G1M Noesis plugin";
 
 // For debug tracking
-#define PLUGIN_VERSON "1.9.2"
+#define PLUGIN_VERSON "1.9.2.1"
 
 //Options
 bool bMerge = false;
@@ -200,6 +200,7 @@ noesisModel_t* LoadG1EMModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRA
 	}
 
 	void* ctx = rapi->rpgCreateContext(); //Create context
+	rapi->rpgSetOption(RPGOPT_BIGENDIAN, bBigEndian); // unsure if this is needed
 
 	uint32_t GE1M_Offset = 0;
 	G1EM_HEADER<bBigEndian> g1emHeader = G1EM_HEADER<bBigEndian>(fileBuffer, GE1M_Offset, bufferLen);
@@ -214,9 +215,10 @@ noesisModel_t* LoadG1EMModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRA
 	//   READ BASIC HEADER INFO  //
 	///////////////////////////////
 
-	CArrayList<noesisTex_t*> textureList;
+	CArrayList<noesisTex_t*>      textureList;
 	CArrayList<noesisMaterial_t*> matList;
-	CArrayList<noesisModel_t*> mdlList;
+	CArrayList<noesisModel_t*>    mdlList;
+	noesisMaterial_t* material;
 
 	int modelCount = (int)g1emHeader.MODEL_COUNT;
 	int meshesCount = (int)g1emHeader.MESH_COUNT;
@@ -287,7 +289,7 @@ noesisModel_t* LoadG1EMModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRA
 					g1tTexIndex -= 1;
 				}
 				G1TG_TEXTURE<bBigEndian> g1tParse = G1TG_TEXTURE<bBigEndian>(g1tlData, g1tLen, textureList, rapi, g1tTexIndex);
-				noesisMaterial_t* material = rapi->Noesis_GetMaterialList(1, true);
+				material = rapi->Noesis_GetMaterialList(1, true);
 				material->texIdx = 1;
 				char mat_name[128];
 				snprintf(mat_name, 128, "%d_mat", 0);
@@ -332,6 +334,7 @@ noesisModel_t* LoadG1EMModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRA
 						{
 							noesisTex_t* texData = (noesisTex_t*)textureList[0];
 							rapi->rpgSetMaterial(texData->filename);
+							//noesisMatData_t* pMd = rapi->Noesis_GetMatData(material, 1, texData, 1);
 							noesisMatData_t* pMd = rapi->Noesis_GetMatDataFromLists(matList, textureList); // unsure how else to get noesisMatData_t
 							rapi->Noesis_SetModelMaterials(mdl, pMd);
 							mdlList.Append(mdl);
@@ -420,6 +423,7 @@ noesisModel_t* LoadG1EMModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRA
 			{
 				noesisTex_t* texData = (noesisTex_t*)textureList[0];
 				rapi->rpgSetMaterial(texData->filename);
+				//noesisMatData_t* pMd = rapi->Noesis_GetMatData(material,1, texData,1);
 				noesisMatData_t* pMd = rapi->Noesis_GetMatDataFromLists(matList, textureList);
 				rapi->Noesis_SetModelMaterials(mdl, pMd);
 				mdlList.Append(mdl);
@@ -441,6 +445,7 @@ noesisModel_t* LoadG1EMModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRA
 			{
 				noesisTex_t* texData = (noesisTex_t*)textureList[0];
 				rapi->rpgSetMaterial(texData->filename);
+				//noesisMatData_t* pMd = rapi->Noesis_GetMatData(material, 1, texData, 1);
 				noesisMatData_t* pMd = rapi->Noesis_GetMatDataFromLists(matList, textureList);
 				rapi->Noesis_SetModelMaterials(mdl, pMd);
 				mdlList.Append(mdl);
@@ -457,15 +462,19 @@ noesisModel_t* LoadG1EMModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRA
 	if (!bNoTextureRename)
 		rapi->Noesis_ProcessCommands("-texnorepfn"); //avoid renaming of the first texture
 
-	numMdl = mdlList.Num();
-	matList.Clear();
-	textureList.Clear();
-	if (numMdl > 0)
+	if (mdlList.Num() == 0)
 	{
-		return mdlList[0];
+		return NULL;
 	}
 
-	return NULL;
+	numMdl = mdlList.Num();
+	
+	noesisModel_t* mdl = rapi->Noesis_ModelsFromList(mdlList, numMdl);
+
+	matList.Clear();
+	textureList.Clear();
+	mdlList.Clear();
+	return mdl;	
 }
 
 template<bool bBigEndian>
