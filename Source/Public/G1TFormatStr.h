@@ -6,7 +6,7 @@
 // For texture debugging
 // Source: https://github.com/hearhellacopters/G1T
 
-char* getPS3FormatStr(uint8_t format)
+char const* getPS3FormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -52,7 +52,7 @@ char* getPS3FormatStr(uint8_t format)
 		break;
 	}
 }
-char* getX360FormatStr(uint8_t format)
+char const* getX360FormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -126,7 +126,7 @@ char* getX360FormatStr(uint8_t format)
 	}
 }
 
-char* getNWiiFormatStr(uint8_t format)
+char const* getNWiiFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -215,7 +215,7 @@ tplFormats_e getNWiiFormat(uint8_t format)
 	}
 }
 
-char* getN3DSFormatStr(uint8_t format)
+char const* getN3DSFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -243,7 +243,7 @@ char* getN3DSFormatStr(uint8_t format)
 	}
 }
 
-char* getPSVitaFormatStr(uint8_t format)
+char const* getPSVitaFormatStr(uint8_t format)
 {
 	switch (format)
 	{                 // for RGBA standard is ABGR Channel 1 is Alpha, 2 is Blue, 3 is Green and Red is 4
@@ -329,7 +329,7 @@ char* getPSVitaFormatStr(uint8_t format)
 	}
 }
 
-char* getAndroidFormatStr(uint8_t format)
+char const* getAndroidFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -387,7 +387,7 @@ char* getAndroidFormatStr(uint8_t format)
 	}
 }
 
-char* getiOSFormatStr(uint8_t format)
+char const* getiOSFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -575,7 +575,7 @@ int getNWiiUFormatValue(uint8_t format, uint8_t KTGL_GD_COLOR_SPACE)
 	}
 }
 
-char* getNWiiUFormatStr(uint8_t format)
+char const* getNWiiUFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -629,7 +629,7 @@ char* getNWiiUFormatStr(uint8_t format)
 	}
 }
 
-char* getWinMacFormatStr(uint8_t format)
+char const* getWinMacFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -712,7 +712,7 @@ char* getWinMacFormatStr(uint8_t format)
 	}
 }
 
-char* getPS4FormatStr(uint8_t format)
+char const* getPS4FormatStr(uint8_t format)
 {
 	switch (format)
 	{                 // RGBA order
@@ -811,7 +811,7 @@ char* getPS4FormatStr(uint8_t format)
 	}
 }
 
-char* getNSwitchFormatStr(uint8_t format)
+char const* getNSwitchFormatStr(uint8_t format)
 {
 	switch (format)
 	{
@@ -896,7 +896,7 @@ char* getNSwitchFormatStr(uint8_t format)
 	}
 }
 
-char* getPS5FormatStr(uint8_t format)
+char const* getPS5FormatStr(uint8_t format)
 {
 	switch (format)
 	{                 // Channel Order is RGBA
@@ -1032,7 +1032,7 @@ char* getPS5FormatStr(uint8_t format)
 	}
 }
 
-char* getFormatStr(PLATFORM system, uint8_t format)
+char const* getFormatStr(PLATFORM system, uint8_t format)
 {
 	switch (system)
 	{

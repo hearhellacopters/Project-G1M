@@ -49,9 +49,9 @@ uint32_t CustomSwizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y, 
     uint32_t reducedX = x;            // Coordinate after each reduction by a block
     uint32_t reducedY = y;
     uint32_t adjustedWidth = width;
-    uint32_t outputX = 0;             // Output coordinate in pixels
-    uint32_t outputY = 0;
-    uint32_t outputOffset = 0;
+    uint32_t swizzledX = 0;             // Swizzled coordinate in pixels
+    uint32_t swizzledY = 0;
+    uint32_t swizzledOffset = 0;
 
     for (size_t i = 0; i < itemCount; ++i)
     {
@@ -66,7 +66,7 @@ uint32_t CustomSwizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y, 
         {
             uint32_t xResidual = (reducedX % blockSize);
             if (isRtl) xResidual = blockSize - xResidual - 1;
-            outputX += xResidual * innerBlockWidth;
+            swizzledX += xResidual * innerBlockWidth;
             //outputOffset += (xResidual * innerBlockWidth;
             innerBlockWidth *= blockSize;
             reducedX /= blockSize;
@@ -78,7 +78,7 @@ uint32_t CustomSwizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y, 
         {
             uint32_t yResidual = (reducedY % blockSize);
             if (isRtl) yResidual = blockSize - yResidual - 1;
-            outputY += yResidual * innerBlockHeight;
+            swizzledY += yResidual * innerBlockHeight;
             innerBlockHeight *= blockSize;
             //adjustedWidth *= blockSize;
             reducedY /= blockSize;
@@ -90,7 +90,7 @@ uint32_t CustomSwizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y, 
         {
             uint32_t xResidual = (reducedX % blockSize);
             if (isRtl) xResidual = blockSize - xResidual - 1;
-            outputX += xResidual * outerBlockCount * innerBlockWidth;
+            swizzledX += xResidual * outerBlockCount * innerBlockWidth;
             outerBlockWidth *= blockSize;
             outerBlockCount *= blockSize;
             reducedX /= blockSize;
@@ -101,7 +101,7 @@ uint32_t CustomSwizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y, 
         {
             uint32_t yResidual = (reducedY % blockSize);
             if (isRtl) yResidual = blockSize - yResidual - 1;
-            outputX += yResidual * outerBlockCount * innerBlockWidth;
+            swizzledX += yResidual * outerBlockCount * innerBlockWidth;
             outerBlockHeight *= blockSize;
             outerBlockCount *= blockSize;
             reducedY /= blockSize;
@@ -109,12 +109,12 @@ uint32_t CustomSwizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y, 
         break;
         }
     }
-    outputX += reducedX * outerBlockWidth * outerBlockHeight * innerBlockWidth;
-    outputOffset += outputX % width;
-    outputY += outputX / width * innerBlockHeight;
-    outputOffset += (reducedY * outerBlockHeight * innerBlockHeight + outputY) * width;
+    swizzledX += reducedX * outerBlockWidth * outerBlockHeight * innerBlockWidth;
+    swizzledOffset += swizzledX % width;
+    swizzledY += swizzledX / width * innerBlockHeight;
+    swizzledOffset += (reducedY * outerBlockHeight * innerBlockHeight + swizzledY) * width;
 
-    return outputOffset;
+    return swizzledOffset;
 }
 
 template<uint32_t BlockWidth, uint32_t BlockHeight>
