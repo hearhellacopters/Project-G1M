@@ -7,8 +7,9 @@
 //   GENERAL SWIZZLE CODE    //
 ///////////////////////////////
 
-// All swizzle code credit to Piken (DwayneR) https://github.com/fdwr
-// NOTE: Not all code is used here. A lot is for reference and debugging
+// All swizzle code in this section here is credit to Piken (DwayneR) https://github.com/fdwr
+// NOTE: Not all code is used here. Most is untested and shouldn't be looked at as a usable or even working swizzle code.
+// The code is kept as is for reference and possible future debugging
 
 template <typename T, size_t N>
 constexpr size_t countof(const T(&a)[N])
@@ -650,32 +651,6 @@ uint32_t GameCubeUnswizzleBC(uint32_t width, uint32_t height, uint32_t x, uint32
 
         return CustomSwizzle(width, height, x, y, items, countof(items));
     }
-}
-
-uint32_t DreamcastUnswizzle(uint32_t width, uint32_t height, uint32_t x, uint32_t y)
-{
-    // TODO: Unreferenced function?
-
-    constexpr static CustomSwizzleItem items[] =
-    {
-        {BlockAxis::MortonY, 2}, // 2x2
-        {BlockAxis::MortonX, 2}, // 2x1
-        {BlockAxis::MortonY, 2}, // 2x2
-        {BlockAxis::MortonX, 2}, // 4x2
-        {BlockAxis::MortonY, 2}, // 4x4
-        {BlockAxis::MortonX, 2}, // 8x4
-        {BlockAxis::MortonY, 2}, // 8x8
-        {BlockAxis::MortonX, 2}, // 16x8
-        {BlockAxis::MortonY, 2}, // 16x16
-        {BlockAxis::MortonX, 2}, // 32x16
-        {BlockAxis::MortonY, 2}, // 32x32
-        //{MortonX, 2}, //
-        //{MortonY, 2}, //
-        //{MortonX, 2}, //
-        //{MortonY, 2}, //
-        //{MortonX, 2}, //
-    };
-    return CustomSwizzle(width, height, x, y, items, countof(items));
 }
 
 uint32_t MortonUnswizzleXFirst(uint32_t width, uint32_t height, uint32_t x, uint32_t y)
