@@ -998,6 +998,7 @@ void SwizzleMasterFunction(BYTE *src, BYTE *dst, uint32_t width, uint32_t height
     }
 }
 
+// unused
 void UnswizzleNWiiU(BYTE* src, BYTE* dst, uint32_t width, uint32_t height, double bitsPerPixel)
 {
     return SwizzleMasterFunction(src, dst, width, height, bitsPerPixel, SwizzleMode::NWiiU);
@@ -1017,7 +1018,7 @@ void DeswizzlePS4Raw(BYTE* src, BYTE* dst, uint32_t width, uint32_t height, doub
 {
     return SwizzleMasterFunction(src, dst, width, height, bitsPerPixel, SwizzleMode::PS4Pixel);
 }
-
+// unused
 void DeswizzlePS5DXT(BYTE* src, BYTE* dst, uint32_t width, uint32_t height, double bitsPerPixel)
 {
     return SwizzleMasterFunction(src, dst, width, height, bitsPerPixel, SwizzleMode::D3DStandardVary);

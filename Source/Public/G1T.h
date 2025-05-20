@@ -3308,6 +3308,11 @@ struct G1TG_TEXTURE
 								PopUpMessage(L"ERROR!! untiledTexData alloc\n");
 								return;
 							}
+
+							// There are tiles happening on top of the swizzle for some of the smaller images and non square images (god help us with non-power 2).
+							// The only way to make a proper deswizzle and untile code would be to reverse the Agc Gpu address logic and default tile allocation as there wasn't any header data for what swizzle was used within any samples found
+							// maybe if more interest happens within the system this untile function will work with more textures
+							
 							//if (meta.bCompressedFormat && (currentImageSize == 65536 || currentImageSize == 16384))
 							//{
 							//	int widthInBlocks = (WIDTH + (blockWidth - 1)) / blockWidth;
