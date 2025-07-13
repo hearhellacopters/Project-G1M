@@ -33,7 +33,7 @@ const char* g_pPluginName = "ProjectG1M";
 const char* g_pPluginDesc = "G1M Noesis plugin";
 
 // For debug tracking
-#define PLUGIN_VERSON "1.9.2.1"
+#define PLUGIN_VERSON "1.9.2.2"
 
 //Options
 bool bMerge = false;
@@ -2727,10 +2727,10 @@ bool NPAPI_InitLocal(void)
 	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
 	getFlipHorizontally(optHandle);
 
-	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Split G1EM models"), setG1EMSplitMeshes, nullptr);
-	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("For game systems where the models aren't split by mesh"));
-	g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
-	getG1EMSplitMeshes(optHandle);
+	//optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Split G1EM models"), setG1EMSplitMeshes, nullptr);
+	//g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("For game systems where the models aren't split by mesh"));
+	//g_nfn->NPAPI_SetToolSubMenuName(optHandle, const_cast<char*>("Project G1M"));
+	//getG1EMSplitMeshes(optHandle);
 
 	optHandle = g_nfn->NPAPI_RegisterTool(const_cast<char*>("Enable debug log"), setDebugLog, nullptr);
 	g_nfn->NPAPI_SetToolHelpText(optHandle, const_cast<char*>("Enable debug log"));
@@ -2754,10 +2754,10 @@ bool NPAPI_InitLocal(void)
 	g_nfn->NPAPI_SetTypeHandler_LoadModel(fHandle, LoadModel<false>);
 	g_nfn->NPAPI_SetTypeHandler_TypeCheck(fHandleBE, CheckModel<true>);
 	g_nfn->NPAPI_SetTypeHandler_LoadModel(fHandleBE, LoadModel<true>);
-	g_nfn->NPAPI_SetTypeHandler_TypeCheck(fGEHandle, CheckModel<false>);
-	g_nfn->NPAPI_SetTypeHandler_LoadModel(fGEHandle, LoadG1EMModel<false>);
-	g_nfn->NPAPI_SetTypeHandler_TypeCheck(fGEHandleBE, CheckModel<true>);
-	g_nfn->NPAPI_SetTypeHandler_LoadModel(fGEHandleBE, LoadG1EMModel<true>);
+	//g_nfn->NPAPI_SetTypeHandler_TypeCheck(fGEHandle, CheckModel<false>);
+	//g_nfn->NPAPI_SetTypeHandler_LoadModel(fGEHandle, LoadG1EMModel<false>);
+	//g_nfn->NPAPI_SetTypeHandler_TypeCheck(fGEHandleBE, CheckModel<true>);
+	//g_nfn->NPAPI_SetTypeHandler_LoadModel(fGEHandleBE, LoadG1EMModel<true>);
 
 	//Textures
 	g_nfn->NPAPI_SetTypeHandler_TypeCheck(fTHandle, CheckTexture<false>);
