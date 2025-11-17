@@ -655,6 +655,8 @@ struct S_G1T_TEX_META
 	// For images that have a hidden alpha channel texture below (double height)
 	// Info here: https://arm-software.github.io/opengl-es-sdk-for-android/compressed_alpha_channels.html
 	bool bHasAlphaAtlas = false;
+	// for 0x71 for some reason
+	bool bSkipAlphaAtlas = false;
 	// 3DS ETC Alpha
 	bool b3DSAlpha = false;
 	bool bIsPVRTC = false;
@@ -2356,8 +2358,12 @@ struct G1TG_TEXTURE
 				{
 					rawFormat = "sRGBA";
 				}
-				bitsPerPixel = 0x08;
-				minBytes = 0x10;
+				bitsPerPixel = 0x04;  // hard codes to 0x08 but we adjust the height
+				HEIGHT *= 2;
+				minBytes = 0x08;
+				meta.bHasAlphaAtlas = true;
+				// in this case we skip alpha atlas but include the extra image data (this has to be a bug in KTGL?)
+				meta.bSkipAlphaAtlas = true;
 				break;
 			case 0x72: // GL_R8 GL_RED GL_UNSIGNED_BYTE
 				rawFormat = "r8";
@@ -3561,10 +3567,13 @@ struct G1TG_TEXTURE
 					{
 						// data should be r8g8b8a8 by now
 						HEIGHT /= 2;
-						uint32_t alphaOffset = WIDTH * HEIGHT * 4;
-						for (uint32_t j = 0; j < WIDTH * HEIGHT; j++)
+						if (!meta.bSkipAlphaAtlas)
 						{
-							passOffPointer[4 * j + 3] = passOffPointer[alphaOffset + 4 * j];
+							uint32_t alphaOffset = WIDTH * HEIGHT * 4;
+							for (uint32_t j = 0; j < WIDTH * HEIGHT; j++)
+							{
+								passOffPointer[4 * j + 3] = passOffPointer[alphaOffset + 4 * j];
+							}
 						}
 						bitsPerPixel = 0x20;
 						minBytes = 4;
