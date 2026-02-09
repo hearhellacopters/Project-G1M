@@ -122,8 +122,9 @@ const char* EX_TYPE_STR[] =
 
 enum class EX_SWIZZLE_TYPE : uint8_t
 {
-	NONE      = 0x00,
-	DX12_64kb = 0x01,
+	NONE            = 0x00,
+	DX12_64kb       = 0x01,
+	ZLIB_COMPRESSED = 0x03  // v66 abd above
 };
 
 const char* EX_SWIZZLE_TYPE_STR[] = 
@@ -131,7 +132,7 @@ const char* EX_SWIZZLE_TYPE_STR[] =
 	"NONE",
 	"DX12_64kb",
 	"",
-	"",
+	"ZLIB_COMPRESSED",
 	"",
 	"",
 	"",
@@ -438,7 +439,6 @@ TextureSizeResult SwitchTextureSizeWithMips(
 
 	for (uint32_t mip = 0; mip < mipCount; ++mip) 
 	{
-
 		size_t mipSize = 0;
 
 		if (isCompressed) 
@@ -461,7 +461,6 @@ TextureSizeResult SwitchTextureSizeWithMips(
 		}
 		else 
 		{
-
 			if (mip == 0 && height < 8) height = 8;
 
 			uint32_t mipWidth = width >> mip;
@@ -514,7 +513,7 @@ TextureSizeResult SwitchTextureSizeWithMips(
 ///////////////////////////////
 
 template <bool bBigEndian>
-struct G1T_HEADER
+struct S_G1T_HEADER
 {
 	char MAGIC[4] = {};
 	uint32_t VERSION = 0;
@@ -529,7 +528,7 @@ struct G1T_HEADER
 	uint32_t HEADER_SIZE = 20;
 	bool bPanic = false;
 
-	G1T_HEADER(BYTE* buffer, uint32_t& offset, noeRAPI_t* rapi, int bufferLen)
+	S_G1T_HEADER(BYTE* buffer, uint32_t& offset, noeRAPI_t* rapi, int bufferLen)
 	{
 		// panic check
 		if (HEADER_SIZE > (uint32_t)bufferLen)
@@ -688,6 +687,8 @@ struct S_G1T_TEX_META
 	bool bD32FloatConvert = false;
 	// for depth and alpha
 	bool bD8A8Convert = false;
+	// for image data compressed with zlib
+	bool bZlibCompressed = false;
 	// for some systems where they don't swizzle these
 	bool bIsPower2 = false;
 	bool bUseSwitchSize = false;
@@ -1032,6 +1033,96 @@ struct S_G1T_TEX_HEADER
 	}
 };
 
+template <bool bBigEndian>
+struct S_G1T_COMPED_HEADER
+{
+	uint32_t VERSION = 0;
+	uint32_t VERSION_NUMBER = 0;
+	uint32_t COMPED_TABLE_SIZE = 0;
+	uint32_t COMPED_UKN1 = 0;
+	uint32_t COMPED_WINDOW_SIZE = 0;
+	uint32_t COMPED_META1 = 0;
+	uint32_t COMPED_CHUNKS = 0;
+	uint32_t COMPED_META2 = 0;
+	uint32_t COMPED_HAS_UNCOMPED_CHUNK = 0;
+	uint32_t COMPED_UNCOMPED_CHUNK_SIZE = 0;
+	uint32_t HEADER_SIZE = 36;
+	bool bPanic = false;
+
+	S_G1T_COMPED_HEADER(BYTE* buffer, uint32_t& offset, noeRAPI_t* rapi, int bufferLen)
+	{
+		// panic check
+		if (offset + HEADER_SIZE > (uint32_t)bufferLen)
+		{
+			bPanic = true;
+			return;
+		}
+
+		VERSION = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(VERSION);
+
+		// get the version number
+		VERSION_NUMBER =
+			(((VERSION >> 24)  & 0xFF) - 0x30) * 1000 +
+			(((VERSION >> 16)  & 0xFF) - 0x30) * 100 +
+			(((VERSION >> 8 )  & 0xFF) - 0x30) * 10 +
+			  (VERSION & 0xFF) - 0x30;
+
+		COMPED_TABLE_SIZE = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_TABLE_SIZE);
+		COMPED_UKN1 = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_UKN1);
+		COMPED_WINDOW_SIZE = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_WINDOW_SIZE);
+		COMPED_META1 = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_META1);
+		COMPED_CHUNKS = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_CHUNKS);
+		COMPED_META2 = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_META2);
+		COMPED_HAS_UNCOMPED_CHUNK = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_HAS_UNCOMPED_CHUNK);
+		COMPED_UNCOMPED_CHUNK_SIZE = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_UNCOMPED_CHUNK_SIZE);
+	}
+};
+
+template <bool bBigEndian>
+struct S_G1T_COMPED_META
+{
+	uint32_t COMPED_META_DATA1 = 0;
+	uint32_t COMPED_META_DATA2 = 0;
+	uint32_t COMPED_META_DATA3 = 0;
+	uint32_t COMPED_META_DATA4 = 0;
+	uint32_t HEADER_SIZE = 16;
+	bool bPanic = false;
+	S_G1T_COMPED_META(BYTE* buffer, uint32_t& offset, int bufferLen)
+	{
+		// panic check
+		if ((offset + HEADER_SIZE) > (uint32_t)bufferLen)
+		{
+			bPanic = true;
+			return;
+		}
+		COMPED_META_DATA1 = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_META_DATA1);
+		COMPED_META_DATA2 = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_META_DATA2);
+		COMPED_META_DATA3 = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_META_DATA3);
+		COMPED_META_DATA4 = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(COMPED_META_DATA4);
+	}
+};
+
+template <bool bBigEndian>
+struct S_G1T_COMPED_OFFSETS
+{
+	// From file start
+	uint32_t OFFSET = 0; 
+	uint32_t SIZE = 0;
+	uint32_t HEADER_SIZE = 8;
+	bool bPanic = false;
+	S_G1T_COMPED_OFFSETS(BYTE* buffer, uint32_t& offset, int bufferLen)
+	{
+		// panic check
+		if ((offset + HEADER_SIZE) > (uint32_t)bufferLen)
+		{
+			bPanic = true;
+			return;
+		}
+		OFFSET = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(OFFSET);
+		SIZE = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(SIZE);
+	}
+};
+
 ///////////////////////////////
 //      MAIN FUNCTION        //
 ///////////////////////////////
@@ -1060,22 +1151,22 @@ struct G1TG_TEXTURE
 
 		// Read basic header
 		uint32_t offset = 0;
-		G1T_HEADER<bBigEndian> header = G1T_HEADER<bBigEndian>(buffer, offset, rapi, bufferLen);
+		S_G1T_HEADER<bBigEndian> G1T_HEADER = S_G1T_HEADER<bBigEndian>(buffer, offset, rapi, bufferLen);
 
 		// Panic check on header read
-		if (header.bPanic)
+		if (G1T_HEADER.bPanic)
 		{
 			PopUpMessage(L"G1T file header read error!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.");
 			assert(0 && "G1T file header read error!");
 		}
 
-		offset = header.HEADER_SIZE;
+		offset = G1T_HEADER.HEADER_SIZE;
 
 		// weird but the 0 file size ATTR headers are missing
-		if (header.FILE_SIZE != 0)
+		if (G1T_HEADER.FILE_SIZE != 0)
 		{
 			// Read ATTR header
-			for (uint32_t i = 0; i < header.TEX_COUNT; i++)
+			for (uint32_t i = 0; i < G1T_HEADER.TEX_COUNT; i++)
 			{
 				AttrList.push_back(S_G1T_TEX_ATTR_HEADER<bBigEndian>(buffer, offset, bufferLen));
 				// Panic check on header
@@ -1091,26 +1182,26 @@ struct G1TG_TEXTURE
 		{
 			// creates a fake one
 			uint32_t dummyOffset = 0;
-			std::vector<uint32_t> dummyBuffer(header.TEX_COUNT, 0); // Safe dummy data
+			std::vector<uint32_t> dummyBuffer(G1T_HEADER.TEX_COUNT, 0); // Safe dummy data
 			// Dummy ATTR header
-			for (uint32_t i = 0; i < header.TEX_COUNT; i++)
+			for (uint32_t i = 0; i < G1T_HEADER.TEX_COUNT; i++)
 			{
 				S_G1T_TEX_ATTR_HEADER<bBigEndian> dummy = S_G1T_TEX_ATTR_HEADER<bBigEndian>((BYTE*)dummyBuffer.data(), dummyOffset, (int)dummyBuffer.size());
 				AttrList.push_back(dummy);
 			}
 		}
 
-		if (AttrList.size() != header.TEX_COUNT)
+		if (AttrList.size() != G1T_HEADER.TEX_COUNT)
 		{
 			PopUpMessage(L"G1T_TEX_ATTR_HEADER missing!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.");
 			assert(0 && "G1T_TEX_ATTR_HEADER missing error! AttrList.size() != header.TEX_COUNT");
 		}
 
-		offset = header.TEX_OFFSET;
+		offset = G1T_HEADER.TEX_OFFSET;
 
 		// SKIP_TABLE offsets (data size is now computed and check as well now)
-		offsetList.resize(header.TEX_COUNT);
-		memcpy(offsetList.data(), buffer + offset, 4 * header.TEX_COUNT); offset += (4 * header.TEX_COUNT);
+		offsetList.resize(G1T_HEADER.TEX_COUNT);
+		memcpy(offsetList.data(), buffer + offset, 4 * G1T_HEADER.TEX_COUNT); offset += (4 * G1T_HEADER.TEX_COUNT);
 		for (auto& offs : offsetList)
 		{
 			if (bBigEndian)
@@ -1118,7 +1209,7 @@ struct G1TG_TEXTURE
 				LITTLE_BIG_SWAP(offs);
 			}
 			// panic check on size
-			if ((offs + header.TEX_OFFSET) > (uint32_t)bufferLen)
+			if ((offs + G1T_HEADER.TEX_OFFSET) > (uint32_t)bufferLen)
 			{
 				PopUpMessage(L"G1T_SKIP_TABLE size read error!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.");
 				assert(0 && "G1T_SKIP_TABLE size read error!\n");
@@ -1137,7 +1228,7 @@ struct G1TG_TEXTURE
 		///////////////////////////////
 
 		// create meta data for each texture
-		std::vector<S_G1T_TEX_META> metas(header.TEX_COUNT);
+		std::vector<S_G1T_TEX_META> METAS(G1T_HEADER.TEX_COUNT);
 
 		// for checking ex header amount in file
 		uint32_t ex_count = 0;
@@ -1145,7 +1236,7 @@ struct G1TG_TEXTURE
 		uint32_t ex_size_read = 0;
 
 		// Read EX headers
-		if ( header.HEADER_EX_SIZE != 0 )
+		if ( G1T_HEADER.HEADER_EX_SIZE != 0 )
 		{
 			if (bDebugLog)
 			{
@@ -1153,9 +1244,9 @@ struct G1TG_TEXTURE
 			}
 			do
 			{
-				S_G1T_HEADER_EX<bBigEndian> entry = S_G1T_HEADER_EX<bBigEndian>(buffer, offset, bufferLen, ex_count);
+				S_G1T_HEADER_EX<bBigEndian> G1T_HEADER_EX = S_G1T_HEADER_EX<bBigEndian>(buffer, offset, bufferLen, ex_count);
 				// check check
-				if ( entry.bPanic )
+				if ( G1T_HEADER_EX.bPanic )
 				{
 					PopUpMessage(L"G1T_HEADER_EX read error!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.");
 					assert(0 && "G1T_HEADER_EX read error!");
@@ -1163,38 +1254,38 @@ struct G1TG_TEXTURE
 
 				ex_count += 1;
 
-				ex_size_read += entry.headerSize;
+				ex_size_read += G1T_HEADER_EX.headerSize;
 
-				ExList.push_back(entry);
+				ExList.push_back(G1T_HEADER_EX);
 
 				if (bDebugLog)
 				{
 					LogDebug("S_G1T_HEADER_EX #%d\n", ex_count);
-					LogDebug("\tTEX_EX_TYPE:\t\t%d (%s)\n", entry.TYPE, EX_TYPE_STR[clamp_index((int)entry.TYPE, sizeof(EX_TYPE_STR))]);
-					LogDebug("\tTEX_EX_COUNT:\t\t%d\n", entry.COUNT);
+					LogDebug("\tTEX_EX_TYPE:\t\t%d (%s)\n", G1T_HEADER_EX.TYPE, EX_TYPE_STR[clamp_index((int)G1T_HEADER_EX.TYPE, sizeof(EX_TYPE_STR))]);
+					LogDebug("\tTEX_EX_COUNT:\t\t%d\n", G1T_HEADER_EX.COUNT);
 					
-					if (entry.TYPE == TEX_EX_TYPE::ASTC_TYPE && entry.COUNT == 1)
+					if (G1T_HEADER_EX.TYPE == TEX_EX_TYPE::ASTC_TYPE && G1T_HEADER_EX.COUNT == 1)
 					{
-						LogDebug("\tKT_ASTC_FORMAT:\t%d (%s)\n", entry.KT_ASTC_FORMAT, ASTC_FORMAT_STR[clamp_index((int)entry.KT_ASTC_FORMAT, sizeof(ASTC_FORMAT_STR))]);
+						LogDebug("\tKT_ASTC_FORMAT:\t%d (%s)\n", G1T_HEADER_EX.KT_ASTC_FORMAT, ASTC_FORMAT_STR[clamp_index((int)G1T_HEADER_EX.KT_ASTC_FORMAT, sizeof(ASTC_FORMAT_STR))]);
 					}
 
-					if (entry.TYPE == TEX_EX_TYPE::PS4_PLANE_ARRAY)
+					if (G1T_HEADER_EX.TYPE == TEX_EX_TYPE::PS4_PLANE_ARRAY)
 					{
-						LogDebug("\tARRAY_DEPTH:\t\t%d\n", entry.ARRAY_DEPTH);
+						LogDebug("\tARRAY_DEPTH:\t\t%d\n", G1T_HEADER_EX.ARRAY_DEPTH);
 					}
 				}
-			} while ( ex_size_read < header.HEADER_EX_SIZE );
+			} while ( ex_size_read < G1T_HEADER.HEADER_EX_SIZE );
 		}
 
-		if (ex_size_read != header.HEADER_EX_SIZE)
+		if (ex_size_read != G1T_HEADER.HEADER_EX_SIZE)
 		{
 			PopUpMessage(L"Extra G1T header size detected. More data might be present.");
 		}
 
 		// issue with 0 file size
-		if (header.FILE_SIZE == 0)
+		if (G1T_HEADER.FILE_SIZE == 0)
 		{
-			offsetList[0] = header.HEADER_EX_SIZE + header.TEX_COUNT * 4;
+			offsetList[0] = G1T_HEADER.HEADER_EX_SIZE + G1T_HEADER.TEX_COUNT * 4;
 		}
 
 		///////////////////////////////
@@ -1216,7 +1307,7 @@ struct G1TG_TEXTURE
 			LogDebug("\n\t\t--TEXTURE INFO--\n\n");
 		}
 
-		for (uint32_t i = 0; i < header.TEX_COUNT; i++ )
+		for (uint32_t i = 0; i < G1T_HEADER.TEX_COUNT; i++ )
 		{
 			///////////////////////////////
 			//       CHECK OFFSETS       //
@@ -1225,7 +1316,7 @@ struct G1TG_TEXTURE
 			// This list is updated for alpha atlas textures as this table is incorrect for them
 			uint32_t offs = offsetList[i]; 
 
-			offset = header.TEX_OFFSET + offs;
+			offset = G1T_HEADER.TEX_OFFSET + offs;
 
 			// panic check
 			if (offset > (uint32_t)bufferLen)
@@ -1238,10 +1329,10 @@ struct G1TG_TEXTURE
 			//      READ TEX HEADERS     //
 			///////////////////////////////
 
-			S_G1T_TEX_HEADER<bBigEndian> texHeader = S_G1T_TEX_HEADER<bBigEndian>(buffer, offset, bufferLen, i);
+			S_G1T_TEX_HEADER<bBigEndian> G1T_TEX_HEADER = S_G1T_TEX_HEADER<bBigEndian>(buffer, offset, bufferLen, i);
 
 			// panic check
-			if (texHeader.bPanic)
+			if (G1T_TEX_HEADER.bPanic)
 			{
 				PopUpMessage(L"G1T_TEX_HEADER read error on texture index #%d!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.", i);
 				assert(0 && "G1T_TEX_HEADER read error!\n");
@@ -1256,73 +1347,74 @@ struct G1TG_TEXTURE
 			// so we have to cycle them 
 			// and parses them how the game would
 
-			S_G1T_TEX_ATTR_HEADER attrHeader = AttrList[i];
+			S_G1T_TEX_ATTR_HEADER G1T_TEX_ATTR_HEADER = AttrList[i];
 
-			S_G1T_TEX_META meta = metas[i];
+			S_G1T_TEX_META META = METAS[i];
 
 			std::vector<uint32_t> read_ex_headers;
 
-			meta.bIsPower2 = texHeader.bIsPower2;
+			META.bIsPower2 = G1T_TEX_HEADER.bIsPower2;
 
-			meta.EXCount = texHeader.READ_G1T_HEADER_EX;
+			META.EXCount = G1T_TEX_HEADER.READ_G1T_HEADER_EX;
 
-			if (meta.EXCount > ex_count)
+			if (META.EXCount > ex_count)
 			{
-				meta.EXCount = ex_count;
+				META.EXCount = ex_count;
 			}
 
 			// Not 100% always but it has been so far
-			if (header.SYSTEM == PLATFORM::NWii ||   // working
-				header.SYSTEM == PLATFORM::PSVita || // working
-				header.SYSTEM == PLATFORM::NWiiU ||  // working
-				header.SYSTEM == PLATFORM::PS4 ||
-				header.SYSTEM == PLATFORM::NSwitch || // almost 100%
-				header.SYSTEM == PLATFORM::PS5
+			if (G1T_HEADER.SYSTEM == PLATFORM::NWii ||    // working
+				G1T_HEADER.SYSTEM == PLATFORM::PSVita ||  // working
+				G1T_HEADER.SYSTEM == PLATFORM::NWiiU ||   // working
+				G1T_HEADER.SYSTEM == PLATFORM::PS4 ||
+				G1T_HEADER.SYSTEM == PLATFORM::NSwitch || // almost 100%
+				G1T_HEADER.SYSTEM == PLATFORM::PS5
 				)
 			{
-				meta.bSwizzled = true;
+				META.bSwizzled = true;
 			}
 
-			if (header.SYSTEM == PLATFORM::NSwitch)
+			if (G1T_HEADER.SYSTEM == PLATFORM::NSwitch)
 			{
-				meta.bUseSwitchSize = true;
+				META.bUseSwitchSize = true;
 			}
 
-			if (header.SYSTEM == PLATFORM::NSwitch &&
-				texHeader.bIsPower2 == false)
+			if (G1T_HEADER.SYSTEM == PLATFORM::NSwitch &&
+				G1T_TEX_HEADER.bIsPower2 == false)
 			{
-				meta.bUseSwitchSize = false;
+				META.bUseSwitchSize = false;
 			}
-			if (header.SYSTEM == PLATFORM::PS5)
+			if (G1T_HEADER.SYSTEM == PLATFORM::PS5)
 			{
-				meta.bUsePS5Size = true;
-			}
-
-			if (texHeader.EX_SWIZZLE == EX_SWIZZLE_TYPE::DX12_64kb)
-			{
-				meta.bSwizzled = true;
+				META.bUsePS5Size = true;
 			}
 
-			if (header.SYSTEM == PLATFORM::PS4)
+			if (G1T_TEX_HEADER.EX_SWIZZLE == EX_SWIZZLE_TYPE::DX12_64kb ||
+				G1T_TEX_HEADER.EX_SWIZZLE == EX_SWIZZLE_TYPE::ZLIB_COMPRESSED)
 			{
-				meta.pAlignment = 1024;
+				META.bSwizzled = true;
+			}
+
+			if (G1T_HEADER.SYSTEM == PLATFORM::PS4)
+			{
+				META.pAlignment = 1024;
 			}
 			
-			switch (attrHeader.TYPE)
+			switch (G1T_TEX_ATTR_HEADER.TYPE)
 			{
 			case TEX_EX_TYPE::CHANNEL_SWAP:
 				// unsure what this flag is
 				// was on a screenshot like image
 				// the color channels were also backwards
 				// means dont swizzle in other formats than xbox 360
-				if (header.SYSTEM != PLATFORM::X360)
+				if (G1T_HEADER.SYSTEM != PLATFORM::X360)
 				{
-					meta.bSwizzled = false;
-					meta.bUseSwitchSize = false;
+					META.bSwizzled = false;
+					META.bUseSwitchSize = false;
 				}
 				else
 				{
-					meta.bChannelFlip = true;
+					META.bChannelFlip = true;
 				}
 				break;
 			case TEX_EX_TYPE::NO_ALPHA:
@@ -1330,7 +1422,7 @@ struct G1TG_TEXTURE
 				// the programs lets you turn off alpha 
 				break;
 			case TEX_EX_TYPE::NORMAL_MAP:
-				meta.bNormalMap = true;
+				META.bNormalMap = true;
 				break;
 			case TEX_EX_TYPE::COLOR_TEST:
 				// need to figure this one out
@@ -1352,12 +1444,12 @@ struct G1TG_TEXTURE
 
 			// this can also change based on the system
 			// but I haven't found a method that works yets based on systems
-			if ( header.HEADER_EX_SIZE != 0 && 
-				 meta.EXCount != 0
+			if ( G1T_HEADER.HEADER_EX_SIZE != 0 && 
+				 META.EXCount != 0
 				)
 			{
 				// this seems to imply the starting header
-				size_t ex_start = texHeader.READ_G1T_HEADER_EX - 1;
+				size_t ex_start = G1T_TEX_HEADER.READ_G1T_HEADER_EX - 1;
 
 				if (ex_start > ex_count)
 				{
@@ -1366,123 +1458,123 @@ struct G1TG_TEXTURE
 
 				for (size_t ex = ex_start; ex < ex_count; ex++)
 				{
-					if (ExList[ex].CONSUMED == 0 && meta.EXCount != 0)
+					if (ExList[ex].CONSUMED == 0 && META.EXCount != 0)
 					{
 						switch (ExList[ex].TYPE)
 						{
 						case TEX_EX_TYPE::CHANNEL_SWAP:
-							if (header.SYSTEM != PLATFORM::X360)
+							if (G1T_HEADER.SYSTEM != PLATFORM::X360)
 							{
-								meta.bSwizzled = false;
-								meta.bUseSwitchSize = false;
+								META.bSwizzled = false;
+								META.bUseSwitchSize = false;
 							}
 							else
 							{
-								meta.bChannelFlip = true;
+								META.bChannelFlip = true;
 							}
-							meta.bUseSwitchSize = false;
-							meta.bSwizzled = false;
+							META.bUseSwitchSize = false;
+							META.bSwizzled = false;
 							break;
 						case TEX_EX_TYPE::NORMAL_MAP:
 							// only ever seen these with 1, 1 data
 							// and it was a normal map
 							// I don't know what that means
-							meta.xBOX360_w = ExList[ex].xBOX360_w;
-							meta.xBOX360_h = ExList[ex].xBOX360_h;
-							meta.bSwizzled = true;
+							META.xBOX360_w = ExList[ex].xBOX360_w;
+							META.xBOX360_h = ExList[ex].xBOX360_h;
+							META.bSwizzled = true;
 							break;
 						case TEX_EX_TYPE::N3DS_Wii_SWIZZLE:
 							// for sure consumed
-							meta.Wii_SWIZZLE = ExList[ex].Wii_SWIZZLE;
-							meta.bSwizzled = true;
+							META.Wii_SWIZZLE = ExList[ex].Wii_SWIZZLE;
+							META.bSwizzled = true;
 							break;
 						case TEX_EX_TYPE::WiiU_SWIZZLE:
 							// I don't think this one is consumed
 							// read every time for all tex
-							meta.WiiU_SWIZZLE = ExList[ex].WiiU_SWIZZLE;
-							meta.bSwizzled = true;
+							META.WiiU_SWIZZLE = ExList[ex].WiiU_SWIZZLE;
+							META.bSwizzled = true;
 							break;
 						case TEX_EX_TYPE::PS4_PLANE_ARRAY:
 							// I don't think this one is consumed
 							// read every time for all tex
-							meta.ARRAY_ID1 = ExList[ex].ID1;
-							meta.ARRAY_DEPTH = ExList[ex].ARRAY_DEPTH;
+							META.ARRAY_ID1 = ExList[ex].ID1;
+							META.ARRAY_DEPTH = ExList[ex].ARRAY_DEPTH;
 							break;
 						case TEX_EX_TYPE::PSVITA_PS5_SWIZZLE:
-							meta.bSwizzled = true;
+							META.bSwizzled = true;
 							break;
 						case TEX_EX_TYPE::ASTC_TYPE:
-							meta.KT_ASTC_FORMAT = ExList[ex].KT_ASTC_FORMAT;
+							META.KT_ASTC_FORMAT = ExList[ex].KT_ASTC_FORMAT;
 							break;
 						default:
 							break;
 						}
-						meta.EXTRA_INTS = ExList[ex].EXTRA_INTS;
+						META.EXTRA_INTS = ExList[ex].EXTRA_INTS;
 						read_ex_headers.push_back(ex);
 						ExList[ex].CONSUMED = 1;
-						meta.EXCount--;
+						META.EXCount--;
 					} 
 				} 
 			}
 
-			uint32_t WIDTH = max(texHeader.WIDTH, 1);
+			uint32_t WIDTH = max(G1T_TEX_HEADER.WIDTH, 1);
 
-			uint32_t HEIGHT = max(texHeader.HEIGHT, 1);
+			uint32_t HEIGHT = max(G1T_TEX_HEADER.HEIGHT, 1);
 
-			uint32_t MIPS = max(texHeader.MIP_COUNT, 1);
+			uint32_t MIPS = max(G1T_TEX_HEADER.MIP_COUNT, 1);
 
-			uint32_t DEPTH = max(texHeader.DEPTH, 1);
+			uint32_t DEPTH = max(G1T_TEX_HEADER.DEPTH, 1);
 
-			if (texHeader.KTGL_TEXTURE_TYPE == S_GT1_LOAD_TYPE::CUBE)
+			if (G1T_TEX_HEADER.KTGL_TEXTURE_TYPE == S_GT1_LOAD_TYPE::CUBE)
 			{
 				DEPTH = 6;
 			}
 
 			// Not sure why this is a thing but I need it for size
-			if ( meta.ARRAY_DEPTH != 1)
+			if ( META.ARRAY_DEPTH != 1)
 			{
-				DEPTH = meta.ARRAY_DEPTH;
+				DEPTH = META.ARRAY_DEPTH;
 			}
 
 			// Find faces
 			uint32_t FACES = 1;
 
-			if (texHeader.HAS_TEX_EX_HEADER > 0 &&
-				texHeader.EX_FACES != 0)
+			if (G1T_TEX_HEADER.HAS_TEX_EX_HEADER > 0 &&
+				G1T_TEX_HEADER.EX_FACES != 0)
 			{
-				FACES = texHeader.EX_FACES;
+				FACES = G1T_TEX_HEADER.EX_FACES;
 			}
 
 			// Find plane count
 			uint32_t PLANE_COUNT = 1;
 
-			if ( texHeader.KTGL_TEXTURE_TYPE == S_GT1_LOAD_TYPE::PLANAR )
+			if ( G1T_TEX_HEADER.KTGL_TEXTURE_TYPE == S_GT1_LOAD_TYPE::PLANAR )
 			{
 				PLANE_COUNT = 1;
 			}
-			else if (texHeader.KTGL_TEXTURE_TYPE == S_GT1_LOAD_TYPE::PLANE_ARRAY)
+			else if (G1T_TEX_HEADER.KTGL_TEXTURE_TYPE == S_GT1_LOAD_TYPE::PLANE_ARRAY)
 			{
-				if (texHeader.HAS_TEX_EX_HEADER > 0 &&
-					texHeader.EX_ARRAY_COUNT != 0)
+				if (G1T_TEX_HEADER.HAS_TEX_EX_HEADER > 0 &&
+					G1T_TEX_HEADER.EX_ARRAY_COUNT != 0)
 				{
-					PLANE_COUNT = texHeader.EX_ARRAY_COUNT;
+					PLANE_COUNT = G1T_TEX_HEADER.EX_ARRAY_COUNT;
 				}
 			}
-			else if ( texHeader.KTGL_TEXTURE_TYPE == S_GT1_LOAD_TYPE::CUBE_ARRAY )
+			else if ( G1T_TEX_HEADER.KTGL_TEXTURE_TYPE == S_GT1_LOAD_TYPE::CUBE_ARRAY )
 			{
-				if (texHeader.HAS_TEX_EX_HEADER > 0 &&
-					texHeader.EX_ARRAY_COUNT != 0
+				if (G1T_TEX_HEADER.HAS_TEX_EX_HEADER > 0 &&
+					G1T_TEX_HEADER.EX_ARRAY_COUNT != 0
 				)
 				{
-					PLANE_COUNT = texHeader.EX_ARRAY_COUNT; // * depth for total later
+					PLANE_COUNT = G1T_TEX_HEADER.EX_ARRAY_COUNT; // * depth for total later
 				}
 			}
-			else if (texHeader.KTGL_TEXTURE_TYPE == S_GT1_LOAD_TYPE::VOLUME)
+			else if (G1T_TEX_HEADER.KTGL_TEXTURE_TYPE == S_GT1_LOAD_TYPE::VOLUME)
 			{
-				if (texHeader.HAS_TEX_EX_HEADER > 0 &&
-					texHeader.EX_ARRAY_COUNT != 0)
+				if (G1T_TEX_HEADER.HAS_TEX_EX_HEADER > 0 &&
+					G1T_TEX_HEADER.EX_ARRAY_COUNT != 0)
 				{
-					PLANE_COUNT = (uint32_t)pow(2, texHeader.EX_ARRAY_COUNT);
+					PLANE_COUNT = (uint32_t)pow(2, G1T_TEX_HEADER.EX_ARRAY_COUNT);
 				}
 			}
 
@@ -1512,275 +1604,275 @@ struct G1TG_TEXTURE
 			//    TEXTURE INDEX SWITCH   //
 			///////////////////////////////
 
-			switch (texHeader.KTGL_PIXEL_FORMAT)
+			switch (G1T_TEX_HEADER.KTGL_PIXEL_FORMAT)
 			{
 			case 0x00: // GL_RGBA GL_RGBA GL_UNSIGNED_BYTE
 				rawFormat = "r8g8b8a8";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsUNorm = false;
+				META.bIsUNorm = false;
 				break;
 			case 0x01: // GL_BGRA GL_BGRA GL_UNSIGNED_BYTE
 				rawFormat = "b8g8r8a8";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsUNorm = false;
-				if (header.SYSTEM == PLATFORM::X360)
+				META.bIsUNorm = false;
+				if (G1T_HEADER.SYSTEM == PLATFORM::X360)
 				{
-					meta.bChannelFlip = true;
+					META.bChannelFlip = true;
 				}
 				break;
 			case 0x02: // GL_R32F GL_RED GL_FLOAT
 				rawFormat = "r#F32"; // should be working
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bFloat = false;
+				META.bFloat = false;
 				break;
 			case 0x03: // GL_RGBA16F GL_RGBA GL_HALF_FLOAT_OES
 				rawFormat = "r#F16g#F16b#F16a#F16"; // should be working
 				bitsPerPixel = 0x40;
 				minBytes = 0x08;
-				meta.bHalfFloat = false;
+				META.bHalfFloat = false;
 				break;
 			case 0x04: // GL_RGBA32F GL_RGBA GL_FLOAT
 				rawFormat = "r#F32g#F32b#F32a#F32"; // should be working
 				bitsPerPixel = 0x80;
 				minBytes = 0x10;
-				meta.bFloat = false;
+				META.bFloat = false;
 				break;
 			case 0x05: // GL_DEPTH_STENCIL GL_DEPTH_STENCIL GL_UNSIGNED_INT_24_8
 				rawFormat = "d24s8"; // convert to r24g24b24a8
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsDepth = false;
-				meta.bD24_8Convert = false;
-				meta.bIsUNorm = false;
+				META.bIsDepth = false;
+				META.bD24_8Convert = false;
+				META.bIsUNorm = false;
 				break;
 			case 0x06: // GL_COMPRESSED_RGBA_S3TC_DXT1_EXT GL_RGBA GL_UNSIGNED_BYTE BC1
 				fourccFormat = FOURCC_DXT1; // convert to r8g8b8a8
 				bitsPerPixel = 0x04;
 				minBytes = 0x08;
-				meta.bCompressedFormat = true;
-				if (header.SYSTEM == PLATFORM::X360)
+				META.bCompressedFormat = true;
+				if (G1T_HEADER.SYSTEM == PLATFORM::X360)
 				{
-					meta.bBigEndianShortSwap = true;
+					META.bBigEndianShortSwap = true;
 				}
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = false;
+				META.bIsUNorm = false;
 				break;
 			case 0x07: // GL_COMPRESSED_RGBA_S3TC_DXT3_EXT GL_RGBA GL_UNSIGNED_BYTE BC2
 				fourccFormat = FOURCC_DXT3; // convert to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
-				if (header.SYSTEM == PLATFORM::X360)
+				META.bCompressedFormat = true;
+				if (G1T_HEADER.SYSTEM == PLATFORM::X360)
 				{
-					meta.bBigEndianShortSwap = true;
+					META.bBigEndianShortSwap = true;
 				}
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x08: // GL_COMPRESSED_RGBA_S3TC_DXT5_EXT GL_RGBA GL_UNSIGNED_BYTE BC3
 				fourccFormat = FOURCC_DXT5; // convert to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
-				if (header.SYSTEM == PLATFORM::X360)
+				META.bCompressedFormat = true;
+				if (G1T_HEADER.SYSTEM == PLATFORM::X360)
 				{
-					meta.bBigEndianShortSwap = true;
+					META.bBigEndianShortSwap = true;
 				}
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x09: // DXGI_FORMAT_R8G8B8A8_TYPELESS DXGI_FORMAT_R8G8B8A8_UNORM DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
 				rawFormat = "r8g8b8a8";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true; // unsure if this 100%
+				META.bIsUNorm = true;
+				META.bSwizzled = true; // unsure if this 100%
 				break;
 			case 0x0A: // DXGI_FORMAT_B8G8R8A8_TYPELESS DXGI_FORMAT_B8G8R8A8_UNORM DXGI_FORMAT_B8G8R8A8_UNORM_SRGB
 				rawFormat = "b8g8r8a8";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true; // unsure if this 100%
+				META.bIsUNorm = true;
+				META.bSwizzled = true; // unsure if this 100%
 				break;
 			case 0x0B: // DXGI_FORMAT_R32_TYPELESS DXGI_FORMAT_R32_FLOAT DXGI_FORMAT_R32_FLOAT
 				rawFormat = "r#F32"; // should be working
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bFloat = true;
+				META.bFloat = true;
 				break;
 			case 0x0C: // DXGI_FORMAT_R16G16B16A16_TYPELESS DXGI_FORMAT_R16G16B16A16_FLOAT DXGI_FORMAT_R16G16B16A16_FLOAT
 				rawFormat = "r#F16g#F16b#F16a#F16"; // should be working
 				bitsPerPixel = 0x40;
 				minBytes = 0x08;
-				meta.bHalfFloat = true;
+				META.bHalfFloat = true;
 				break;
 			case 0x0D: // DXGI_FORMAT_R32G32B32A32_TYPELESS DXGI_FORMAT_R32G32B32A32_FLOAT DXGI_FORMAT_R32G32B32A32_FLOAT 
 				rawFormat = "r#F32g#F32b#F32a#F32"; // should be working
 				bitsPerPixel = 0x80;
 				minBytes = 0x10;
-				meta.bFloat = true;
+				META.bFloat = true;
 				break;
 			case 0x0E: // SCE_GXM_TEXTURE_FORMAT_U2F10F10F10 SWIZZLE4_ABGR
 				rawFormat = "a2b#F10g#F10r#F10"; // converts to r#F32g#F32b#F32a#F32
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bConvert10BitFloat = true;
+				META.bConvert10BitFloat = true;
 				break;
 			case 0x0F: // GL_ALPHA GL_ALPHA GL_UNSIGNED_BYTE
 				rawFormat = "a8";
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x10: // DXGI_FORMAT_BC1_TYPELESS DXGI_FORMAT_BC1_UNORM DXGI_FORMAT_BC1_UNORM_SRGB DXT1 (PS Vita 4x4 Swizzle & sometimes flip)
 				fourccFormat = FOURCC_DXT1; // convert to r8g8b8a8
 				bitsPerPixel = 0x04; // mortonWidth
 				minBytes = 0x08;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true; // 4x4
+				META.bIsUNorm = true;
+				META.bSwizzled = true; // 4x4
 				break;
 			case 0x11: // DXGI_FORMAT_BC2_TYPELESS DXGI_FORMAT_BC2_UNORM DXGI_FORMAT_BC2_UNORM_SRGB DXT2 / DXT3 (PS Vita 4x4 Swizzle & sometimes flip)
 				fourccFormat = FOURCC_DXT3; // convert to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true; // 4x4
+				META.bIsUNorm = true;
+				META.bSwizzled = true; // 4x4
 				break;
 			case 0x12: // DXGI_FORMAT_BC3_TYPELESS DXGI_FORMAT_BC3_UNORM DXGI_FORMAT_BC3_UNORM_SRGB DXT4 / DXT5 (PS Vita 4x4 Swizzle & sometimes flip)
 				fourccFormat = FOURCC_DXT5; // convert to r8g8b8a8
 				bitsPerPixel = 0x08; // mortonWidth
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true; // 4x4
+				META.bIsUNorm = true;
+				META.bSwizzled = true; // 4x4
 				break;
 			case 0x13: // DXGI_FORMAT_R24G8_TYPELESS DXGI_FORMAT_R24_UNORM_X8_TYPELESS DXGI_FORMAT_D24_UNORM_S8_UINT
 				rawFormat = "d24s8"; // convert to r24g24b24a8
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsDepth = true;
-				meta.bD24_8Convert = true;
-				meta.bIsUNorm = true;
+				META.bIsDepth = true;
+				META.bD24_8Convert = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x14: // GL_DEPTH_COMPONENT16 GL_DEPTH_COMPONENT GL_UNSIGNED_SHORT
 				rawFormat = "d16"; // convert to r16g16b16
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsDepth = true;
-				meta.bD16Convert = true;
+				META.bIsDepth = true;
+				META.bD16Convert = true;
 				break;
 			case 0x15: // DXGI_FORMAT_R16_TYPELESS DXGI_FORMAT_R16_UNORM DXGI_FORMAT_D16_UNORM
 				rawFormat = "d16";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x16: // GL_R16 GL_RED GL_UNSIGNED_SHORT
 				rawFormat = "r16";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x17: // DXGI_FORMAT_R16_TYPELESS DXGI_FORMAT_R16_UNORM DXGI_FORMAT_R16_UNORM
 				rawFormat = "r16";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x18: // DXGI_FORMAT_A8_UNORM DXGI_FORMAT_A8_UNORM DXGI_FORMAT_A8_UNORM
 				rawFormat = "a8";
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x19: // DXGI_FORMAT_B5G6R5_UNORM DXGI_FORMAT_B5G6R5_UNORM DXGI_FORMAT_B5G6R5_UNORM
 				rawFormat = "b5g6r5";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x1A: // DXGI_FORMAT_B5G5R5A1_UNORM DXGI_FORMAT_B5G5R5A1_UNORM DXGI_FORMAT_B5G5R5A1_UNORM
 				rawFormat = "b5g5r5a1";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x1B: // SCE_GXM_TEXTURE_FORMAT_U4U4U4U4_SWIZZLE4_ARGB
 				rawFormat = "a4r4g4b4"; // could also be b4g4r4a4
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x1C: // DXGI_FORMAT_B5G6R5_UNORM DXGI_FORMAT_B5G6R5_UNORM DXGI_FORMAT_B5G6R5_UNORM
 				rawFormat = "b5g6r5";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x1D: // DXGI_FORMAT_B5G5R5A1_UNORM DXGI_FORMAT_B5G5R5A1_UNORM DXGI_FORMAT_B5G5R5A1_UNORM
 				rawFormat = "b5g5r5a1";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x1E: // SCE_GXM_TEXTURE_FORMAT_U4U4U4U4_SWIZZLE4_ARGB
 				rawFormat = "a4r4g4b4"; // could also be b4g4r4a4
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x1F: // GL_R32F GL_RED GL_FLOAT
 				rawFormat = "r#F32";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bFloat = true;
+				META.bFloat = true;
 				break;
 			case 0x20: // DXGI_FORMAT_R32_TYPELESS DXGI_FORMAT_R32_FLOAT DXGI_FORMAT_R32_FLOAT
 				rawFormat = "d24s8"; // could also be R32 float
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsDepth = true;
-				meta.bD24_8Convert = true;
-				meta.bIsUNorm = true;
+				META.bIsDepth = true;
+				META.bD24_8Convert = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x21: // GL_BGRA GL_BGRA GL_UNSIGNED_BYTE
 				rawFormat = "b8g8r8a8";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x22: // DXGI_FORMAT_B8G8R8X8_TYPELESS DXGI_FORMAT_B8G8R8X8_UNORM DXGI_FORMAT_B8G8R8X8_UNORM_SRGB
 				rawFormat = "b8g8r8p8";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x23: // DXGI_FORMAT_R16G16_TYPELESS DXGI_FORMAT_R16G16_UNORM DXGI_FORMAT_R16G16_UNORM 
 				rawFormat = "r16g16";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x24: // DXGI_FORMAT_R16G16_TYPELESS DXGI_FORMAT_R16G16_UNORM DXGI_FORMAT_R16G16_UNORM (same as above but had a 0 bpp error)
 				rawFormat = "g16r16";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x25: // GX_TF_RGB5A3 GX_TF_RGB5A3 GX_TF_RGB5A3 (Wii)
 				rawFormat = "r5g5b5a3"; // also seens as BC6H
@@ -1791,31 +1883,31 @@ struct G1TG_TEXTURE
 				rawFormat = "g8b8";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x27: // SCE_GXM_TEXTURE_FORMAT_U8U8_SWIZZLE2_GRRR (g8r8)
 				rawFormat = "a8r8";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x28: // SEC_R8 SEC_R8 SEC_UNORM 
 				rawFormat = "b8"; // XXRX = Red -> Blue
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x29: // SEC_R8 SEC_R8 SEC_UNORM (dupe of 0x28 so might have another thing going on)
 				rawFormat = "g8"; // XRXX = Red -> Blue
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x2A: // GL_R8 GL_RED GL_UNSIGNED_BYTE
 				rawFormat = "r8"; // RXXX
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x2B: // PICA_LUMINANCE PICA_LUMINANCE PICA_UNORM_4_HALF_BYTE
 				rawFormat = "r4"; // just making this red as it's a weird format
@@ -1823,25 +1915,25 @@ struct G1TG_TEXTURE
 				                  // also seen as BC6H
 				bitsPerPixel = 0x04;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x2C: // PICA_LUMINANCE PICA_LUMINANCE GL_UNSIGNED_BYTE
 				rawFormat = "r8";
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x2D: // PICA_LUMINANCE_A PICA_LUMINANCE_A PICA_UNORM_44_BYTE
 				rawFormat = "r4a4"; // just making this red as it's a weird format
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x2E: // PICA_LUMINANCE_A PICA_LUMINANCE_A GL_UNSIGNED_BYTE
 				rawFormat = "r8a8"; // just making this red as it's a weird format
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x2F: // GX_TF_I4 GX_TF_I4 GX_TF_I4
 				rawFormat = "r4";
@@ -1857,7 +1949,7 @@ struct G1TG_TEXTURE
 								  // PS5:    A8
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x31: // SCE_GXM_TEXTURE_FORMAT_P4_SWIZZLE4_ABGR (CI4)  (a8b8g8r8)
 				rawFormat = "r4"; // Converts to r8g8b8a8
@@ -1865,7 +1957,7 @@ struct G1TG_TEXTURE
 				                  // PSVita: SCE_GXM_TEXTURE_FORMAT_P4_SWIZZLE4_ABGR
 				bitsPerPixel = 0x04;
 				minBytes = 0x01;
-				meta.bPalette4 = true;
+				META.bPalette4 = true;
 				break;
 			case 0x32: // SCE_GXM_TEXTURE_FORMAT_P8_SWIZZLE4_ABGR (CI8) (a8b8g8r8)
 				rawFormat = "r8"; // Converts to r8g8b8a8
@@ -1873,110 +1965,110 @@ struct G1TG_TEXTURE
 							      // PSVita: SCE_GXM_TEXTURE_FORMAT_P8_SWIZZLE4_ABGR
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bPalette8 = true;
+				META.bPalette8 = true;
 				break;
 			case 0x33: // GX_TF_CI14 GX_TF_CI14 GX_TF_CI14
 				rawFormat = "r14"; // Converts to r8g8b8a8
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bPalette14 = true;
+				META.bPalette14 = true;
 				break;
 			case 0x34: // GL_RGB GL_RGB GL_UNSIGNED_SHORT_5_6_5     b5g6r5
 				rawFormat = "b5g6r5";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x35: // GL_RGBA GL_RGBA GL_UNSIGNED_SHORT_5_5_5_1
 				rawFormat = "a1b5g5r5"; // might be r5g5b5a1
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x36: // GL_RGBA GL_RGBA GL_UNSIGNED_SHORT_4_4_4_4 a4b4g4r4
 				rawFormat = "a4b4g4r4"; // might be r4g4b4a4
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x37: // SCE_GXM_TEXTURE_FORMAT_P4_SWIZZLE4_ABGR 
 				rawFormat = "r4";
 				bitsPerPixel = 0x04;
 				minBytes = 0x01;
-				meta.bPalette4 = true;
+				META.bPalette4 = true;
 				break;
 			case 0x38: // GL_R8I GL_RED_INTEGER GL_BYTE
 				rawFormat = "r8"; // Converts to r8g8b8a8
 				                  // PSVita: SCE_GXM_TEXTURE_FORMAT_P8_SWIZZLE4_ABGR
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bPalette8 = true;
+				META.bPalette8 = true;
 				break;
 			case 0x39: // GL_R16I GL_RED_INTEGER GL_SHORT
 				rawFormat = "r16";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bSigned = true;
+				META.bSigned = true;
 				break;
 			case 0x3A: // GL_R32I GL_RED_INTEGER GL_INT
 				rawFormat = "r32";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bSigned = true;
+				META.bSigned = true;
 				break;
 			case 0x3B: // BNTX_R5G6B5_UNORM BNTX_R5G6B5_UNORM, BNTX_R5G6B5_UNORM      (found in switch)
 				rawFormat = "r5g6b5";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x3C: // BNTX_R5G5B5A1_UNORM BNTX_R5G5B5A1_UNORM BNTX_R5G5B5A1_UNORM (found in switch)
 				rawFormat = "r5g5b5a1";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x3D: // BNTX_R4G4B4A4_UNORM BNTX_R4G4B4A4_UNORM BNTX_R4G4B4A4_UNORM (found in switch)
 				rawFormat = "r4g4b4a4";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x3E: // GL_R16I GL_RED_INTEGER GL_SHORT (likely 0x39 dupe)
 				rawFormat = "r16";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bSigned = true;
+				META.bSigned = true;
 				break;
 			case 0x3F: // GL_R32I GL_RED_INTEGER GL_INT   (likely 0x3A dupe)
 				rawFormat = "r32";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bSigned = true;
+				META.bSigned = true;
 				break;
 			case 0x40: // GL_RGB10_A2 GL_RGBA GL_UNSIGNED_INT_2_10_10_10_REV
 				rawFormat = "r10g10b10a2";
 				bitsPerPixel = 0x20;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x41: // GL_RGBA16_EXT GL_RGBA GL_UNSIGNED_SHORT
 				rawFormat = "r16g16b16a16";
 				bitsPerPixel = 0x40;
 				minBytes = 0x08;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x42: // DXGI_FORMAT_R10G10B10A2_UNORM DXGI_FORMAT_R10G10B10A2_UNORM DXGI_FORMAT_R10G10B10A2_UNORM
 				rawFormat = "r10g10b10a2";
 				bitsPerPixel = 0x20;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x43: // DXGI_FORMAT_R16G16B16A16_TYPELESS DXGI_FORMAT_R16G16B16A16_UNORM DXGI_FORMAT_R16G16B16A16_UNORM 
 				rawFormat = "r16g16b16a16";
 				bitsPerPixel = 0x40;
 				minBytes = 0x08;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x44: // PICA_A PICA_A PICA_UNORM_4_HALF_BYTE (3DS)
 				rawFormat = "r4";
@@ -1992,26 +2084,26 @@ struct G1TG_TEXTURE
 				rawFormat = "r8g8";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x47: // PICA_ETC1_RGB8 PICA_ETC1_RGB8 GL_RGB 
-				meta.bPICAETC = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bPICAETC = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsETC1 = true;
+				META.bIsETC1 = true;
 				bitsPerPixel = 0x04;
 				minBytes = 0x08;
 				break;
 			case 0x48: // PICA_ETC1_RGB8A4 PICA_ETC1_RGB8A4 GL_RGBA (has 2 block per to account for the alpha)
-				meta.bPICAETC = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bPICAETC = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsETC1 = true;
+				META.bIsETC1 = true;
 				bitsPerPixel = 0x04;
 				minBytes = 0x10;
-				meta.b3DSAlpha = true;
+				META.b3DSAlpha = true;
 				break;
 			case 0x49: // GL_RGB GL_RGB GL_UNSIGNED_BYTE
 				rawFormat = "r8g8b8";
@@ -2022,68 +2114,68 @@ struct G1TG_TEXTURE
 				rawFormat = "r8g8b8";
 				bitsPerPixel = 0x18;
 				minBytes = 0x03;
-				meta.bIsDepth = true;
+				META.bIsDepth = true;
 				break;
 			case 0x4B: // GL_DEPTH_COMPONENT GL_DEPTH_COMPONENT GL_UNSIGNED_INT (r8g8b8) (like a dupe of above)
 				rawFormat = "r8g8b8";
 				bitsPerPixel = 0x18;
 				minBytes = 0x03;
-				meta.bIsDepth = true;
+				META.bIsDepth = true;
 				break;
 			case 0x4C: // DXGI_FORMAT_R32G32_TYPELESS DXGI_FORMAT_R32G32_FLOAT DXGI_FORMAT_R32G32_FLOAT
 				rawFormat = "r#F32g#F32";
 				bitsPerPixel = 0x40;
 				minBytes = 0x08;
-				meta.bFloat = true;
+				META.bFloat = true;
 				break;
 			case 0x4D: // DXGI_FORMAT_R32G32_TYPELESS DXGI_FORMAT_R32G32_FLOAT DXGI_FORMAT_R32G32_FLOAT
 				rawFormat = "r#F32g#F32";
 				bitsPerPixel = 0x40;
 				minBytes = 0x08;
-				meta.bFloat = true;
+				META.bFloat = true;
 				break;
 			case 0x4E: // GL_DEPTH_COMPONENT32F GL_DEPTH_COMPONENT GL_FLOAT (R32F)
 				rawFormat = "r#F32";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsDepth = true;
-				meta.bFloat = true;
+				META.bIsDepth = true;
+				META.bFloat = true;
 				break;
 			case 0x4F: // DXGI_FORMAT_R32_TYPELESS DXGI_FORMAT_R32_FLOAT DXGI_FORMAT_D32_FLOAT
 				rawFormat = "d#F32"; // converts to r#F32g#F32b#F32
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bIsDepth = true;
-				meta.bD32Convert = true;
-				meta.bFloat = true;
+				META.bIsDepth = true;
+				META.bD32Convert = true;
+				META.bFloat = true;
 				break;
 			case 0x50: // SCE_GXM_TEXTURE_FORMAT_PVRTII2BPP_SWIZZLE4_ABGR
-				meta.bIsPVRTC = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsPVRTC = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				bitsPerPixel = 0x02;
 				blockWidth = 8;
 				blockHeight = 4;
 				minBytes = 0x08;
 				break;
 			case 0x51: // SCE_GXM_TEXTURE_FORMAT_PVRTII2BPP_SWIZZLE4_ABGR
-				meta.bIsPVRTC = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsPVRTC = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				bitsPerPixel = 0x02;
 				blockWidth = 8;
 				blockHeight = 4;
 				minBytes = 0x08;
 				break;
 			case 0x52: // SCE_GXM_TEXTURE_FORMAT_PVRTII4BPP_SWIZZLE4_ABGR
-				meta.bIsPVRTC = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsPVRTC = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				bitsPerPixel = 0x04;
 				blockWidth = 4;
 				blockHeight = 4;
 				minBytes = 0x08;
 				break;
 			case 0x53: // SCE_GXM_TEXTURE_FORMAT_PVRTII4BPP_SWIZZLE4_ABGR 
-				meta.bIsPVRTC = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsPVRTC = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				bitsPerPixel = 0x04;
 				blockWidth = 4;
 				blockHeight = 4;
@@ -2093,21 +2185,21 @@ struct G1TG_TEXTURE
 				rawFormat = "r8";
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x55: // GL_LUMINANCE_ALPHA GL_LUMINANCE_ALPHA GL_UNSIGNED_BYTE (also seen as G8R8)
 				rawFormat = "r8a8";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x56: // GL_ETC1_RGB8_OES GL_RGB GL_UNSIGNED_BYTE
-				meta.bIsETC1 = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsETC1 = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
 				rawFormat = "RGB";
-				if (texHeader.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
+				if (G1T_TEX_HEADER.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
 				{
 					rawFormat = "sRGB";
 				}
@@ -2115,16 +2207,16 @@ struct G1TG_TEXTURE
 				minBytes = 0x08;
 				break;
 			case 0x57: // GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG GL_RGBA GL_UNSIGNED_BYTE
-				meta.bIsPVRTC = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsPVRTC = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 8;
 				blockHeight = 4;
 				bitsPerPixel = 0x02;
 				minBytes = 0x08;
 				break;
 			case 0x58: // GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG GL_RGBA GL_UNSIGNED_BYTE
-				meta.bIsPVRTC = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsPVRTC = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
 				bitsPerPixel = 0x04;
@@ -2134,142 +2226,142 @@ struct G1TG_TEXTURE
 				fourccFormat = FOURCC_DXT1; // converts to r8g8b8a8
 				bitsPerPixel = 0x04;
 				minBytes = 0x08;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x5A: // GL_COMPRESSED_RGBA_S3TC_DXT3_EXT GL_RGBA GL_UNSIGNED_BYTE (BC2)
 				fourccFormat = FOURCC_DXT3; // converts to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x5B: // GL_COMPRESSED_RGBA_S3TC_DXT5_EXT GL_RGBA GL_UNSIGNED_BYTE (BC3)
 				fourccFormat = FOURCC_DXT5; // converts to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x5C: // DXGI_FORMAT_BC4_TYPELESS DXGI_FORMAT_BC4_UNORM DXGI_FORMAT_BC4)_UNORM 
 				fourccFormat = FOURCC_BC4; // converts to r8g8b8a8
 				bitsPerPixel = 0x04;
 				minBytes = 0x08;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bNormalized = false;
-				meta.bIsUNorm = true;
+				META.bNormalized = false;
+				META.bIsUNorm = true;
 				break;
 			case 0x5D: // DXGI_FORMAT_BC5_TYPELESS DXGI_FORMAT_BC5_UNORM DXGI_FORMAT_BC5_UNORM 
 				fourccFormat = FOURCC_BC5; // converts to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bNormalized = false;
-				meta.bIsUNorm = true;
+				META.bNormalized = false;
+				META.bIsUNorm = true;
 				break;
 			case 0x5E: // DXGI_FORMAT_BC6H_TYPELESS DXGI_FORMAT_BC6H_UF16 DXGI_FORMAT_BC6H_UF16 // Uses cubemaps
 				fourccFormat = FOURCC_BC6H; // converts to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bNormalized = false;
-				meta.bIsUNorm = true;
+				META.bNormalized = false;
+				META.bIsUNorm = true;
 				break;
 			case 0x5F: // DXGI_FORMAT_BC7_TYPELESS DXGI_FORMAT_BC7_UNORM DXGI_FORMAT_BC7_UNORM_SRGB  
 				fourccFormat = FOURCC_BC7; // converts to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bNormalized = false;
-				meta.bIsUNorm = true;
+				META.bNormalized = false;
+				META.bIsUNorm = true;
 				break;
 			case 0x60: // DXGI_FORMAT_BC1_TYPELESS DXGI_FORMAT_BC1_UNORM DXGI_FORMAT_BC1_UNORM_SRGB  DXT1 (swizzled)
 				fourccFormat = FOURCC_BC1; // converts to r8g8b8a8
 				bitsPerPixel = 0x04;
 				minBytes = 0x08;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true;
+				META.bIsUNorm = true;
+				META.bSwizzled = true;
 				break;
 			case 0x61: // DXGI_FORMAT_BC2_TYPELESS DXGI_FORMAT_BC2_UNORM DXGI_FORMAT_BC2_UNORM_SRGB  DXT2 / DXT3 (swizzled)
 				fourccFormat = FOURCC_BC2; // converts to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true;
+				META.bIsUNorm = true;
+				META.bSwizzled = true;
 				break;
 			case 0x62: // DXGI_FORMAT_BC3_TYPELESS DXGI_FORMAT_BC3_UNORM DXGI_FORMAT_BC3_UNORM_SRGB  DXT4 / DXT5 (swizzled)
 				fourccFormat = FOURCC_BC3; // converts to r8g8b8a8
 				bitsPerPixel = 0x04;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true;
+				META.bIsUNorm = true;
+				META.bSwizzled = true;
 				break;
 			case 0x63: // DXGI_FORMAT_BC4_TYPELESS DXGI_FORMAT_BC4_UNORM DXGI_FORMAT_BC4_UNORM ATI1  (swizzled)
 				fourccFormat = FOURCC_BC4; // converts to r8g8b8a8
 				bitsPerPixel = 0x04;
 				minBytes = 0x08;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bNormalized = false;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true;
+				META.bNormalized = false;
+				META.bIsUNorm = true;
+				META.bSwizzled = true;
 				break;
 			case 0x64: // DXGI_FORMAT_BC5_TYPELESS DXGI_FORMAT_BC5_UNORM DXGI_FORMAT_BC5_UNORM ATI2  (swizzled)
 				fourccFormat = FOURCC_BC5; // converts to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bNormalized = false;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true;
+				META.bNormalized = false;
+				META.bIsUNorm = true;
+				META.bSwizzled = true;
 				break;
 			case 0x65: // DXGI_FORMAT_BC6H_TYPELESS DXGI_FORMAT_BC6H_UF16 DXGI_FORMAT_BC6H_UF16      (swizzled)
 				fourccFormat = FOURCC_BC6H; // converts to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bNormalized = false;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true;
+				META.bNormalized = false;
+				META.bIsUNorm = true;
+				META.bSwizzled = true;
 				break;
 			case 0x66: // DXGI_FORMAT_BC7_TYPELESS DXGI_FORMAT_BC7_UNORM DXGI_FORMAT_BC7_UNORM_SRGB  (swizzled)
 				fourccFormat = FOURCC_BC7; // converts to r8g8b8a8
 				bitsPerPixel = 0x08;
 				minBytes = 0x10;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
-				meta.bNormalized = false;
-				meta.bIsUNorm = true;
-				meta.bSwizzled = true;
+				META.bNormalized = false;
+				META.bIsUNorm = true;
+				META.bSwizzled = true;
 				break;
 			case 0x67: // GL_RGBA8UI GL_RGBA_INTEGER GL_UNSIGNED_BYTE
 				rawFormat = "r8g8b8a8";
@@ -2285,97 +2377,97 @@ struct G1TG_TEXTURE
 				rawFormat = "r#F16g#F16";
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bHalfFloat = true;
+				META.bHalfFloat = true;
 				break;
 			case 0x6A: // GL_R16F GL_RED GL_HALF_FLOAT_OES
 				rawFormat = "r#F16";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bHalfFloat = true;
+				META.bHalfFloat = true;
 				break;
 			case 0x6B: // GL_R11F_G11F_B10F GL_RGB GL_UNSIGNED_INT_10F_11F_11F_REV
 				rawFormat = "r#F11g#F11b#F10"; // very special case
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bConvert11Bit10BitFloat = true;
+				META.bConvert11Bit10BitFloat = true;
 				break;
 			case 0x6C: // GL_DEPTH32F_STENCIL8 GL_DEPTH_COMPONENT GL_FLOAT_32_UNSIGNED_INT_24_8_REV (df32p24s8)
 				rawFormat = "d#F32p24s8";
 				bitsPerPixel = 0x40;
 				minBytes = 0x08;
-				meta.bIsDepth = true;
-				meta.bFloat = true;
-				meta.bD32FloatConvert = true;
+				META.bIsDepth = true;
+				META.bFloat = true;
+				META.bD32FloatConvert = true;
 				break;
 			case 0x6D: // DXGI_FORMAT_R32G8X24_TYPELESS DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS DXGI_FORMAT_D32_FLOAT_S8X24_UINT 
 				rawFormat = "d#F32s8p24";
 				bitsPerPixel = 0x40;
 				minBytes = 0x08;
-				meta.bIsDepth = true;
-				meta.bFloat = true;
-				meta.bD32FloatConvert = true;
+				META.bIsDepth = true;
+				META.bFloat = true;
+				META.bD32FloatConvert = true;
 				break;
 			case 0x6E: // SEC_R16 SEC_R16 SEC_UNORM
 				rawFormat = "r16";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x6F: // GL_ETC1_RGB8_OES GL_RGB GL_UNSIGNED_BYTE (alpha under, bpp adjusted)
-				meta.bIsETC1 = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsETC1 = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
 				blockWidth = 4;
 				blockHeight = 4;
 				rawFormat = "RGB";
-				if (texHeader.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
+				if (G1T_TEX_HEADER.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
 				{
 					rawFormat = "sRGB";
 				}
 				bitsPerPixel = 0x04; // hard codes to 0x08 but we adjust the height
 				HEIGHT *= 2;
 				minBytes = 0x08;
-				meta.bHasAlphaAtlas = true;
+				META.bHasAlphaAtlas = true;
 				break;
 			case 0x70: // GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG GL_RGB GL_UNSIGNED_BYTE (likely alpha under, bpp adjusted)
-				meta.bIsPVRTC = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsPVRTC = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
 				bitsPerPixel = 0x04; // hard codes to 0x08 but we adjust the height
 				HEIGHT *= 2;
 				minBytes = 0x08;
-				meta.bHasAlphaAtlas = true;
+				META.bHasAlphaAtlas = true;
 				break;
 			case 0x71: // GL_COMPRESSED_RGBA8_ETC2_EAC GL_RGBA GL_UNSIGNED_BYTE
-				meta.bIsETC2 = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsETC2 = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
 				rawFormat = "RGBA";
-				if (texHeader.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
+				if (G1T_TEX_HEADER.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
 				{
 					rawFormat = "sRGBA";
 				}
 				bitsPerPixel = 0x04;  // hard codes to 0x08 but we adjust the height
 				HEIGHT *= 2;
 				minBytes = 0x08;
-				meta.bHasAlphaAtlas = true;
+				META.bHasAlphaAtlas = true;
 				// in this case we skip alpha atlas but include the extra image data (this has to be a bug in KTGL?)
-				meta.bSkipAlphaAtlas = true;
+				META.bSkipAlphaAtlas = true;
 				break;
 			case 0x72: // GL_R8 GL_RED GL_UNSIGNED_BYTE
 				rawFormat = "r8";
 				bitsPerPixel = 0x08;
 				minBytes = 0x01;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x73: // GL_RG8 GL_RG GL_UNSIGNED_BYTE
 				rawFormat = "r8g8";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x74: // DXGI_FORMAT_R8G8B8A8_TYPELESS DXGI_FORMAT_R8G8B8A8_UINT DXGI_FORMAT_R8G8B8A8_UINT
 				rawFormat = "r8g8b8a8";
@@ -2391,33 +2483,33 @@ struct G1TG_TEXTURE
 				rawFormat = "r#F16g#F16";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bHalfFloat = true;
+				META.bHalfFloat = true;
 				break;
 			case 0x77: // DXGI_FORMAT_R16_TYPELESS DXGI_FORMAT_R16_FLOAT DXGI_FORMAT_R16_FLOAT
 				rawFormat = "r#F16";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bHalfFloat = true;
+				META.bHalfFloat = true;
 				break;
 			case 0x78: // DXGI_FORMAT_R11G11B10_FLOAT GL_HALF_FLOAT_OES GL_HALF_FLOAT_OES
 				rawFormat = "r#F11g#F11b#F10"; // very special case
 				bitsPerPixel = 0x20;
 				minBytes = 0x04;
-				meta.bConvert11Bit10BitFloat = true;
+				META.bConvert11Bit10BitFloat = true;
 				break;
 			case 0x79: // SEC_R16 SEC_R16 SEC_UNORM (dupe of 0x6E so something else might be going on)
 				rawFormat = "r16";
 				bitsPerPixel = 0x10;
 				minBytes = 0x02;
-				meta.bIsUNorm = true;
+				META.bIsUNorm = true;
 				break;
 			case 0x7A: // GL_COMPRESSED_R11_EAC GL_RED GL_UNSIGNED_BYTE
-				meta.bIsETC2 = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsETC2 = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
 				rawFormat = "R";
-				if (texHeader.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
+				if (G1T_TEX_HEADER.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
 				{
 					rawFormat = "Rs";
 				}
@@ -2425,12 +2517,12 @@ struct G1TG_TEXTURE
 				minBytes = 0x08;
 				break;
 			case 0x7B: // GL_COMPRESSED_RG11_EAC GL_RG GL_UNSIGNED_BYTE
-				meta.bIsETC2 = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsETC2 = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
 				rawFormat = "RG";
-				if (texHeader.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
+				if (G1T_TEX_HEADER.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
 				{
 					rawFormat = "RGs";
 				}
@@ -2438,12 +2530,12 @@ struct G1TG_TEXTURE
 				minBytes = 0x10;
 				break;
 			case 0x7C: // GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2 GL_RGBA GL_UNSIGNED_BYTE
-				meta.bIsETC2 = true; // converts to r8g8b8a8
-				meta.bCompressedFormat = true;
+				META.bIsETC2 = true; // converts to r8g8b8a8
+				META.bCompressedFormat = true;
 				blockWidth = 4;
 				blockHeight = 4;
 				rawFormat = "RGBA1";
-				if (texHeader.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
+				if (G1T_TEX_HEADER.KTGL_GD_COLOR_SPACE == KTGL_GD_COLOR_SPACE_TYPE::sRGB_FROM_LINEAR)
 				{
 					rawFormat = "sRGBA1";
 				}
@@ -2455,14 +2547,14 @@ struct G1TG_TEXTURE
 				rawFormat = "ASTC_5x5"; // converts to r8g8b8a8
 				blockWidth = 5;
 				blockHeight = 5;
-				meta.bCompressedFormat = true;
+				META.bCompressedFormat = true;
 				bitsPerPixel = 5.12;
 				minBytes = 0x10;
-				meta.bIsASTC = true;
+				META.bIsASTC = true;
 				// unsure why this is but found unswizzled if not power 2
-				if (header.HEADER_EX_SIZE)
+				if (G1T_HEADER.HEADER_EX_SIZE)
 				{
-					switch (meta.KT_ASTC_FORMAT)
+					switch (META.KT_ASTC_FORMAT)
 					{
 					case EG1TASTCFormat::ASTC_4x4:
 						rawFormat = "ASTC_4x4";
@@ -2550,7 +2642,7 @@ struct G1TG_TEXTURE
 						break;
 					default:
 						{
-							PopUpMessage(L"Uknown ASTC Texture on %d of %d!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.", i + 1, meta.KT_ASTC_FORMAT);
+							PopUpMessage(L"Uknown ASTC Texture on %d of %d!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.", i + 1, META.KT_ASTC_FORMAT);
 							assert(0 && "Unknown ASTC texture format.");
 						}
 						break;
@@ -2563,7 +2655,7 @@ struct G1TG_TEXTURE
 				}
 				break;
 			default:
-				PopUpMessage(L"Uknown Texture format of #%d on texture %d!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.", texHeader.KTGL_PIXEL_FORMAT, i);
+				PopUpMessage(L"Uknown Texture format of #%d on texture %d!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.", G1T_TEX_HEADER.KTGL_PIXEL_FORMAT, i);
 				assert(0 && "Unknown texture format.");
 				break;
 			}
@@ -2573,7 +2665,7 @@ struct G1TG_TEXTURE
 			///////////////////////////////
 
 			// some Switch stuff isn't swizzled or GOBed
-			if ( meta.bUseSwitchSize == true)
+			if ( META.bUseSwitchSize == true)
 			{
 				firstMipSize = SwitchTextureSizeWithMips(
 					WIDTH,
@@ -2585,8 +2677,8 @@ struct G1TG_TEXTURE
 					blockHeight,
 					minBytes,
 					bitsPerPixel,
-					meta.bCompressedFormat,
-					texHeader.KTGL_TEXTURE_TYPE,
+					META.bCompressedFormat,
+					G1T_TEX_HEADER.KTGL_TEXTURE_TYPE,
 					1,
 					1
 				).layerSize;
@@ -2601,13 +2693,13 @@ struct G1TG_TEXTURE
 					blockHeight,
 					minBytes,
 					bitsPerPixel,
-					meta.bCompressedFormat,
-					texHeader.KTGL_TEXTURE_TYPE,
+					META.bCompressedFormat,
+					G1T_TEX_HEADER.KTGL_TEXTURE_TYPE,
 					PLANE_COUNT,
 					DEPTH
 				).totalSize;
 			}
-			else if (meta.bUsePS5Size == true)
+			else if (META.bUsePS5Size == true)
 			{
 				// unkown how the PS% creates padding for its mip sheets with KT systems
 				// skipping the sizing just pulling the full size between the headers
@@ -2622,20 +2714,20 @@ struct G1TG_TEXTURE
 					minBytes,
 					blockWidth,
 					blockHeight,
-					meta.bCompressedFormat,
+					META.bCompressedFormat,
 					bitsPerPixel,
-					meta.pAlignment
+					META.pAlignment
 				);
 
-				if (header.TEX_COUNT == 1)
+				if (G1T_HEADER.TEX_COUNT == 1)
 				{
 					totalTexBufferLen = bufferLen - offset;
 				}
 				else
 				{
-					if (i < (int)(header.TEX_COUNT - 1))
+					if (i < (int)(G1T_HEADER.TEX_COUNT - 1))
 					{
-						totalTexBufferLen = (header.TEX_OFFSET + offsetList[i + 1]) - offset;
+						totalTexBufferLen = (G1T_HEADER.TEX_OFFSET + offsetList[i + 1]) - offset;
 					}
 					else
 					{
@@ -2655,9 +2747,9 @@ struct G1TG_TEXTURE
 					minBytes,
 					blockWidth,
 					blockHeight,
-					meta.bCompressedFormat,
+					META.bCompressedFormat,
 					bitsPerPixel,
-					meta.pAlignment
+					META.pAlignment
 				);
 
 				totalTexBufferLen = TextureSizeWithMips(
@@ -2670,79 +2762,209 @@ struct G1TG_TEXTURE
 					minBytes,
 					blockWidth,
 					blockHeight,
-					meta.bCompressedFormat,
+					META.bCompressedFormat,
 					bitsPerPixel,
-					meta.pAlignment
+					META.pAlignment
 				);
 			}
 
 			///////////////////////////////
-			//     ADJUST IMAGE SIZE     //
+			//     ZLIB DECOMPRESS       //
 			///////////////////////////////
 
-			// Sanity check on texture data size
-			if (header.TEX_COUNT == 1)
+			// for zlib compressed data
+			BYTE* unzippedData = nullptr;
+
+			if (G1T_TEX_HEADER.EX_SWIZZLE == EX_SWIZZLE_TYPE::ZLIB_COMPRESSED)
 			{
-				// If there is only one texture, check if there is extra data and meet it
-				if (offset + totalTexBufferLen < (uint32_t)bufferLen)
+				META.bZlibCompressed = true;
+				// if compressed, parse new headers
+				S_G1T_COMPED_HEADER<bBigEndian> G1T_COMPED_HEADER = S_G1T_COMPED_HEADER<bBigEndian>(buffer, offset, rapi, bufferLen);
+				// Panic check on header read
+				if (G1T_COMPED_HEADER.bPanic)
 				{
-					LogDebug("Data size of %d but expecting %d.\n", (uint32_t)totalTexBufferLen, (uint32_t)(bufferLen - offset));
-					totalTexBufferLen = bufferLen - offset;
+					PopUpMessage(L"G1T file compressed header read error!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.");
+					assert(0 && "G1T_COMPED_HEADER Size Issue!");
 				}
-				else if (offset + totalTexBufferLen > (uint32_t)bufferLen)
+
+				uint32_t UNCOMPRESSED_SIZE = (G1T_COMPED_HEADER.COMPED_CHUNKS * G1T_COMPED_HEADER.COMPED_WINDOW_SIZE) + (G1T_COMPED_HEADER.COMPED_UNCOMPED_CHUNK_SIZE);
+
+				std::vector<S_G1T_COMPED_META<bBigEndian>> G1T_COMPED_META1;
+
+				for (uint32_t j = 0; j < G1T_COMPED_HEADER.COMPED_META1 * DEPTH * FACES * PLANE_COUNT; j++)
 				{
-					LogDebug("Data size of %d but only %d left.\n", (uint32_t)totalTexBufferLen, (uint32_t)(bufferLen - offset));
-					totalTexBufferLen = bufferLen - offset;
+					G1T_COMPED_META1.push_back(S_G1T_COMPED_META<bBigEndian>(buffer, offset, bufferLen));
+					// Panic check on header read
+					if (G1T_COMPED_META1[j].bPanic)
+					{
+						PopUpMessage(L"G1T file header read error on compressed meta 1 data!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.");
+						assert(0 && "G1T_COMPED_META Size Issue!");
+					}
 				}
-			}
-			else if (i < (int)(header.TEX_COUNT - 1))
-			{
-				uint32_t expected_offset = header.TEX_OFFSET + offsetList[i + 1];
-				uint32_t dif = expected_offset - (offset + totalTexBufferLen);
-				// Check if the size matchs the next texture.
-				// if not, adjust based on if over or under.
-				if (expected_offset != offset + totalTexBufferLen)
+
+				std::vector<S_G1T_COMPED_META<bBigEndian>> G1T_COMPED_META2;
+
+				for (uint32_t j = 0; j < G1T_COMPED_HEADER.COMPED_META2 * DEPTH * FACES * PLANE_COUNT; j++)
 				{
-					// If next expected offset is ahead, meet it. But check for max file size.
-					if (expected_offset > offset + totalTexBufferLen)
+					G1T_COMPED_META2.push_back(S_G1T_COMPED_META<bBigEndian>(buffer, offset, bufferLen));
+					// Panic check on header read
+					if (G1T_COMPED_META2[j].bPanic)
 					{
-						if (offset + totalTexBufferLen + dif <= (uint32_t)bufferLen)
-						{
-							LogDebug("Data size on texture %d was %d but less than the expected %d.\n", i + 1, (uint32_t)totalTexBufferLen, (uint32_t)(expected_offset - offset));
-							totalTexBufferLen += dif;
-						}
-						else
-						{
-							LogDebug("Data size on texture %d was more than remaining file size of %d.\n", i + 1, (uint32_t)(offset + totalTexBufferLen));
-						}
+						PopUpMessage(L"G1T file header read error on compressed meta 2 data!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.");
+						assert(0 && "G1T_COMPED_META Size Issue!");
 					}
-					else
+				}
+
+				uint32_t COMPRESSED_SIZE = 0;
+
+				std::vector <S_G1T_COMPED_OFFSETS<bBigEndian>> G1T_COMPED_OFFSETS;
+
+				for (uint32_t j = 0; j < G1T_COMPED_HEADER.COMPED_CHUNKS; j++)
+				{
+					G1T_COMPED_OFFSETS.push_back(S_G1T_COMPED_OFFSETS<bBigEndian>(buffer, offset, bufferLen));
+					// Panic check on header read
+					if (G1T_COMPED_OFFSETS[j].bPanic)
 					{
-						// If expected offset is under, warn and continue. But check for max file size.
-						if (!meta.bHasAlphaAtlas && offsetList[i + 1] != 0)
-						{
-							LogDebug("Data size on texture %d was more than expected at %d instead of %d.\n", i + 1, (uint32_t)totalTexBufferLen, (uint32_t)(expected_offset - offset));
-							totalTexBufferLen = expected_offset - offset;
-						}
+						PopUpMessage(L"G1T file header read error on compressed offsets!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.");
+						assert(0 && "G1T_COMPED_OFFSETS Size Issue!");
 					}
+					COMPRESSED_SIZE += G1T_COMPED_OFFSETS[j].SIZE;
+				}
+
+				std::vector <S_G1T_COMPED_OFFSETS<bBigEndian>> G1T_UNCOMPED_OFFSETS;
+
+				if(G1T_COMPED_HEADER.COMPED_HAS_UNCOMPED_CHUNK)
+				{
+					G1T_UNCOMPED_OFFSETS.push_back(S_G1T_COMPED_OFFSETS<bBigEndian>(buffer, offset, bufferLen));
+					// Panic check on header read
+					if (G1T_UNCOMPED_OFFSETS[0].bPanic)
+					{
+						PopUpMessage(L"G1T file header read error on uncompressed offsets!\nRestart app with 'Enable debug log' on in 'Tools/Project G1M' menu for info.");
+						assert(0 && "G1T_UNCOMPED_OFFSETS Size Issue!");
+					}
+					COMPRESSED_SIZE += G1T_UNCOMPED_OFFSETS[0].SIZE;
+				}
+
+				if (UNCOMPRESSED_SIZE != totalTexBufferLen)
+				{
+					LogDebug("Image size of %d but expecting %d.\n", (uint32_t)UNCOMPRESSED_SIZE, (uint32_t)totalTexBufferLen);
+				}
+
+				if (offset + COMPRESSED_SIZE < (uint32_t)bufferLen)
+				{
+					LogDebug("Data size of %d but only %d left.\n", (uint32_t)COMPRESSED_SIZE, (uint32_t)(bufferLen - offset));
+					assert(0 && "COMPRESSED_SIZE Issue!");
+				}
+
+				// uncompress code
+
+				unzippedData = (BYTE*)rapi->Noesis_UnpooledAlloc(UNCOMPRESSED_SIZE);
+
+				if (!unzippedData)
+				{
+					PopUpMessage(L"ERROR!! unzippedData alloc\n");
+					return;
+				}
+
+				uint32_t unzippedOffset = 0;
+
+				for (uint32_t j = 0; j < G1T_COMPED_HEADER.COMPED_CHUNKS; j++)
+				{
+					uint32_t SIZE = (*(uint32_t*)(buffer + offset)); offset += 4; if (bBigEndian) LITTLE_BIG_SWAP(SIZE);
+
+					int retCode = rapi->Decomp_Inflate(buffer + offset, unzippedData + unzippedOffset, SIZE, G1T_COMPED_HEADER.COMPED_WINDOW_SIZE);
+
+					if (retCode < 0)
+					{
+						assert(0 && "Decomp_Inflate Issue!");
+					}
+
+					offset += SIZE;
+
+					unzippedOffset += G1T_COMPED_HEADER.COMPED_WINDOW_SIZE;
+				}
+
+				if (G1T_COMPED_HEADER.COMPED_HAS_UNCOMPED_CHUNK)
+				{
+					// only 1 chunk
+					memcpy(unzippedData + unzippedOffset, buffer + offset, G1T_UNCOMPED_OFFSETS[0].SIZE);
+
+					offset += G1T_UNCOMPED_OFFSETS[0].SIZE;
+
+					unzippedOffset += G1T_UNCOMPED_OFFSETS[0].SIZE;
 				}
 			}
 			else
 			{
-				// If this is the last texture, check if there is extra data and meet it
-				if (offset + totalTexBufferLen > (uint32_t)bufferLen)
-				{
-					LogDebug("Data size on texture %d has extra size of %d instead of %d.\n", i + 1, (uint32_t)totalTexBufferLen, (int)(bufferLen - offset));
-					totalTexBufferLen = bufferLen - offset;
-				}
-			}
 
-			// these formats have incorrect offsets in the skip table so we must fix
-			if (meta.bHasAlphaAtlas || ((i < (int)(header.TEX_COUNT - 1) && offsetList[i + 1] == 0)))
-			{
-				if (i < (header.TEX_COUNT - 1))
+				///////////////////////////////
+				//     ADJUST IMAGE SIZE     //
+				///////////////////////////////
+
+				// Sanity check on texture data size
+				if (G1T_HEADER.TEX_COUNT == 1)
 				{
-					offsetList[i + 1] = offsetList[i] + texHeader.headerSize + (uint32_t)totalTexBufferLen;
+					// If there is only one texture, check if there is extra data and meet it
+					if (offset + totalTexBufferLen < (uint32_t)bufferLen)
+					{
+						LogDebug("Data size of %d but expecting %d.\n", (uint32_t)totalTexBufferLen, (uint32_t)(bufferLen - offset));
+						totalTexBufferLen = bufferLen - offset;
+					}
+					else if (offset + totalTexBufferLen > (uint32_t)bufferLen)
+					{
+						LogDebug("Data size of %d but only %d left.\n", (uint32_t)totalTexBufferLen, (uint32_t)(bufferLen - offset));
+						totalTexBufferLen = bufferLen - offset;
+					}
+				}
+				else if (i < (int)(G1T_HEADER.TEX_COUNT - 1))
+				{
+					uint32_t expected_offset = G1T_HEADER.TEX_OFFSET + offsetList[i + 1];
+					uint32_t dif = expected_offset - (offset + totalTexBufferLen);
+					// Check if the size matchs the next texture.
+					// if not, adjust based on if over or under.
+					if (expected_offset != offset + totalTexBufferLen)
+					{
+						// If next expected offset is ahead, meet it. But check for max file size.
+						if (expected_offset > offset + totalTexBufferLen)
+						{
+							if (offset + totalTexBufferLen + dif <= (uint32_t)bufferLen)
+							{
+								LogDebug("Data size on texture %d was %d but less than the expected %d.\n", i + 1, (uint32_t)totalTexBufferLen, (uint32_t)(expected_offset - offset));
+								totalTexBufferLen += dif;
+							}
+							else
+							{
+								LogDebug("Data size on texture %d was more than remaining file size of %d.\n", i + 1, (uint32_t)(offset + totalTexBufferLen));
+							}
+						}
+						else
+						{
+							// If expected offset is under, warn and continue. But check for max file size.
+							if (!META.bHasAlphaAtlas && offsetList[i + 1] != 0)
+							{
+								LogDebug("Data size on texture %d was more than expected at %d instead of %d.\n", i + 1, (uint32_t)totalTexBufferLen, (uint32_t)(expected_offset - offset));
+								totalTexBufferLen = expected_offset - offset;
+							}
+						}
+					}
+				}
+				else
+				{
+					// If this is the last texture, check if there is extra data and meet it
+					if (offset + totalTexBufferLen > (uint32_t)bufferLen)
+					{
+						LogDebug("Data size on texture %d has extra size of %d instead of %d.\n", i + 1, (uint32_t)totalTexBufferLen, (int)(bufferLen - offset));
+						totalTexBufferLen = bufferLen - offset;
+					}
+				}
+
+				// these formats have incorrect offsets in the skip table so we must fix
+				if (META.bHasAlphaAtlas || ((i < (int)(G1T_HEADER.TEX_COUNT - 1) && offsetList[i + 1] == 0)))
+				{
+					if (i < (G1T_HEADER.TEX_COUNT - 1))
+					{
+						offsetList[i + 1] = offsetList[i] + G1T_TEX_HEADER.headerSize + (uint32_t)totalTexBufferLen;
+					}
 				}
 			}
 
@@ -2750,7 +2972,7 @@ struct G1TG_TEXTURE
 			//       DEBUG LOG DATA      //
 			///////////////////////////////
 
-						// for when we only need one texture for a load model
+			// for when we only need one texture for a load model
 			if (selectedTex != -1)
 			{
 				if (selectedTex != i)
@@ -2763,33 +2985,33 @@ struct G1TG_TEXTURE
 			{
 				LogDebug("G1T_TEXTURE #%d @ %d\n", i + 1, offset);
 				// Log any metadata
-				if ( attrHeader.TYPE != TEX_EX_TYPE::NONE )
+				if ( G1T_TEX_ATTR_HEADER.TYPE != TEX_EX_TYPE::NONE )
 				{
-					LogDebug("\tTEX_EX_TYPE:\t\t%d (%s)\n", attrHeader.TYPE, EX_TYPE_STR[clamp_index((int)attrHeader.TYPE, sizeof(EX_TYPE_STR))]);
+					LogDebug("\tTEX_EX_TYPE:\t\t%d (%s)\n", G1T_TEX_ATTR_HEADER.TYPE, EX_TYPE_STR[clamp_index((int)G1T_TEX_ATTR_HEADER.TYPE, sizeof(EX_TYPE_STR))]);
 				}
 
 				// Log main entry
-				LogDebug("\tKTGL_TEXTURE_TYPE:\t%d (%s)\n", texHeader.KTGL_TEXTURE_TYPE, LOAD_TYPE_STR[clamp_index((int)texHeader.KTGL_TEXTURE_TYPE, sizeof(LOAD_TYPE_STR))]);
-				LogDebug("\tMIP_COUNT:\t\t%d\n", texHeader.MIP_COUNT);
-				LogDebug("\tKTGL_PIXEL_FORMAT:\t0x%02X\n", texHeader.KTGL_PIXEL_FORMAT);
-				LogDebug("\tSYS_TEX_FORMAT:\t\t%s\n", getFormatStr(header.SYSTEM, texHeader.KTGL_PIXEL_FORMAT));
-				LogDebug("\tPACKED_WIDTH:\t\t%d (%d)\n", texHeader.PACKED_WIDTH, WIDTH);
-				LogDebug("\tPACKED_HEIGHT:\t\t%d (%d)\n", texHeader.PACKED_HEIGHT, HEIGHT);
-				LogDebug("\tPACKED_DEPTH:\t\t%d (%d)\n", texHeader.PACKED_DEPTH, DEPTH);
-				LogDebug("\tREAD_G1T_HEADER_EX:\t%d\n", texHeader.READ_G1T_HEADER_EX);
-				LogDebug("\tHAS_TEX_EX_HEADER:\t%d\n", texHeader.HAS_TEX_EX_HEADER);
-				if (texHeader.HAS_TEX_EX_HEADER > 0)
+				LogDebug("\tKTGL_TEXTURE_TYPE:\t%d (%s)\n", G1T_TEX_HEADER.KTGL_TEXTURE_TYPE, LOAD_TYPE_STR[clamp_index((int)G1T_TEX_HEADER.KTGL_TEXTURE_TYPE, sizeof(LOAD_TYPE_STR))]);
+				LogDebug("\tMIP_COUNT:\t\t%d\n", G1T_TEX_HEADER.MIP_COUNT);
+				LogDebug("\tKTGL_PIXEL_FORMAT:\t0x%02X\n", G1T_TEX_HEADER.KTGL_PIXEL_FORMAT);
+				LogDebug("\tSYS_TEX_FORMAT:\t\t%s\n", getFormatStr(G1T_HEADER.SYSTEM, G1T_TEX_HEADER.KTGL_PIXEL_FORMAT));
+				LogDebug("\tPACKED_WIDTH:\t\t%d (%d)\n", G1T_TEX_HEADER.PACKED_WIDTH, WIDTH);
+				LogDebug("\tPACKED_HEIGHT:\t\t%d (%d)\n", G1T_TEX_HEADER.PACKED_HEIGHT, HEIGHT);
+				LogDebug("\tPACKED_DEPTH:\t\t%d (%d)\n", G1T_TEX_HEADER.PACKED_DEPTH, DEPTH);
+				LogDebug("\tREAD_G1T_HEADER_EX:\t%d\n", G1T_TEX_HEADER.READ_G1T_HEADER_EX);
+				LogDebug("\tHAS_TEX_EX_HEADER:\t%d\n", G1T_TEX_HEADER.HAS_TEX_EX_HEADER);
+				if (G1T_TEX_HEADER.HAS_TEX_EX_HEADER > 0)
 				{
-					LogDebug("\tTEX_HEADER_EX_SIZE:\t%d\n", texHeader.TEX_HEADER_EX_SIZE);
-					LogDebug("\tZ_SCALE:\t\t\t%.4f\n", texHeader.Z_SCALE);
-					LogDebug("\tEX_FACES:\t\t%d (%d)\n", texHeader.EX_FACES, FACES);
-					LogDebug("\tEX_ARRAY_COUNT:\t%d (%d)\n", texHeader.EX_ARRAY_COUNT, PLANE_COUNT);
-					LogDebug("\tEX_SWIZZLE:\t\t%d (%s)\n", texHeader.EX_SWIZZLE, EX_SWIZZLE_TYPE_STR[clamp_index((int)texHeader.EX_SWIZZLE, sizeof(EX_SWIZZLE_TYPE_STR))]);
-					LogDebug("\tKTGL_GD_COLOR_SPACE:\t%d (%s)\n", texHeader.KTGL_GD_COLOR_SPACE, COLOR_SPACE_STR[clamp_index((int)texHeader.KTGL_GD_COLOR_SPACE, sizeof(COLOR_SPACE_STR))]);
-					LogDebug("\tEX_WIDTH:\t\t%d\n", texHeader.EX_WIDTH);
-					LogDebug("\tEX_HEIGHT:\t\t%d\n", texHeader.EX_HEIGHT);
+					LogDebug("\tTEX_HEADER_EX_SIZE:\t%d\n", G1T_TEX_HEADER.TEX_HEADER_EX_SIZE);
+					LogDebug("\tZ_SCALE:\t\t\t%.4f\n", G1T_TEX_HEADER.Z_SCALE);
+					LogDebug("\tEX_FACES:\t\t%d (%d)\n", G1T_TEX_HEADER.EX_FACES, FACES);
+					LogDebug("\tEX_ARRAY_COUNT:\t%d (%d)\n", G1T_TEX_HEADER.EX_ARRAY_COUNT, PLANE_COUNT);
+					LogDebug("\tEX_SWIZZLE:\t\t%d (%s)\n", G1T_TEX_HEADER.EX_SWIZZLE, EX_SWIZZLE_TYPE_STR[clamp_index((int)G1T_TEX_HEADER.EX_SWIZZLE, sizeof(EX_SWIZZLE_TYPE_STR))]);
+					LogDebug("\tKTGL_GD_COLOR_SPACE:\t%d (%s)\n", G1T_TEX_HEADER.KTGL_GD_COLOR_SPACE, COLOR_SPACE_STR[clamp_index((int)G1T_TEX_HEADER.KTGL_GD_COLOR_SPACE, sizeof(COLOR_SPACE_STR))]);
+					LogDebug("\tEX_WIDTH:\t\t%d\n", G1T_TEX_HEADER.EX_WIDTH);
+					LogDebug("\tEX_HEIGHT:\t\t%d\n", G1T_TEX_HEADER.EX_HEIGHT);
 				}
-				if (texHeader.READ_G1T_HEADER_EX)
+				if (G1T_TEX_HEADER.READ_G1T_HEADER_EX)
 				{
 					for (size_t q = 0; q < read_ex_headers.size(); q++) 
 					{
@@ -2812,20 +3034,20 @@ struct G1TG_TEXTURE
 
 				LogDebug("\t\t-TEXTURE %d META-\n", i + 1);
 				LogDebug("\tDimensions:\t\t%d x %d (d%d x p%d) mips %d\n", WIDTH, HEIGHT, DEPTH, PLANE_COUNT, MIPS);
-				if (meta.bCompressedFormat)
+				if (META.bCompressedFormat)
 				{
-					LogDebug("\tbCompressedFormat:\t%s\n", meta.bCompressedFormat ? "true" : "false");
+					LogDebug("\tbCompressedFormat:\t%s\n", META.bCompressedFormat ? "true" : "false");
 					if (fourccFormat != -1)       LogDebug("\tfourccFormat:\t\t%c%c%c%c\n", fourccFormat & 0xFF, (fourccFormat >> 8) & 0xFF, (fourccFormat >> 16) & 0xFF, (fourccFormat >> 24) & 0xFF);
-					if (meta.bIsETC1)             LogDebug("\tbIsETC1:\t\t\t%s\n", meta.bIsETC1 ? "true" : "false");
-					if (meta.bPICAETC)            LogDebug("\tbPICAETC:\t\t%s\n", meta.bPICAETC ? "true" : "false");
-					if (meta.bIsETC2)             LogDebug("\tbIsETC2:\t\t\t%s\n", meta.bIsETC2 ? "true" : "false");
-					if (meta.bPalette4)           LogDebug("\tbPalette4:\t\t%s\n", meta.bPalette4 ? "true" : "false");
-					if (meta.bPalette8)           LogDebug("\tbPalette8:\t\t%s\n", meta.bPalette8 ? "true" : "false");
-					if (meta.bPalette14)          LogDebug("\tbPalette14:\t\t%s\n", meta.bPalette14 ? "true" : "false");
-					if (meta.bIsPVRTC)            LogDebug("\tbIsPVRTC:\t\t%s\n", meta.bIsPVRTC ? "true" : "false");
-					if (meta.bIsASTC)             LogDebug("\tbIsASTC:\t\t\t%s\n", meta.bIsASTC ? "true" : "false");
-					if (meta.bHasAlphaAtlas)      LogDebug("\tbHasAlphaAtlas:\t\t%s\n", meta.bHasAlphaAtlas ? "true" : "false");
-					if (meta.b3DSAlpha)           LogDebug("\tb3DSAlpha:\t\t%s\n", meta.b3DSAlpha ? "true" : "false");
+					if (META.bIsETC1)             LogDebug("\tbIsETC1:\t\t\t%s\n", META.bIsETC1 ? "true" : "false");
+					if (META.bPICAETC)            LogDebug("\tbPICAETC:\t\t%s\n", META.bPICAETC ? "true" : "false");
+					if (META.bIsETC2)             LogDebug("\tbIsETC2:\t\t\t%s\n", META.bIsETC2 ? "true" : "false");
+					if (META.bPalette4)           LogDebug("\tbPalette4:\t\t%s\n", META.bPalette4 ? "true" : "false");
+					if (META.bPalette8)           LogDebug("\tbPalette8:\t\t%s\n", META.bPalette8 ? "true" : "false");
+					if (META.bPalette14)          LogDebug("\tbPalette14:\t\t%s\n", META.bPalette14 ? "true" : "false");
+					if (META.bIsPVRTC)            LogDebug("\tbIsPVRTC:\t\t%s\n", META.bIsPVRTC ? "true" : "false");
+					if (META.bIsASTC)             LogDebug("\tbIsASTC:\t\t\t%s\n", META.bIsASTC ? "true" : "false");
+					if (META.bHasAlphaAtlas)      LogDebug("\tbHasAlphaAtlas:\t\t%s\n", META.bHasAlphaAtlas ? "true" : "false");
+					if (META.b3DSAlpha)           LogDebug("\tb3DSAlpha:\t\t%s\n", META.b3DSAlpha ? "true" : "false");
 					LogDebug("\tblockDim:\t\t\t%dx%d\n", blockWidth, blockHeight);
 					LogDebug("\tblockByteSize:\t\t%d\n", minBytes);
 				}
@@ -2834,23 +3056,24 @@ struct G1TG_TEXTURE
 				LogDebug("\tminBytes:\t\t\t%d\n", minBytes);
 				LogDebug("\tfirstMipSize:\t\t%d\n", firstMipSize);
 				LogDebug("\ttotalTexBufferLen:\t\t%d\n", totalTexBufferLen);
-				if (meta.bIsUNorm)                LogDebug("\tbIsUNorm:\t\t%s\n", meta.bIsUNorm ? "true" : "false");
-				if (meta.bNormalMap)              LogDebug("\tbNormalMap:\t\t%s\n", meta.bNormalMap ? "true" : "false");
-				if (meta.bNormalized)             LogDebug("\tbNormalize:\t\t%s\n", meta.bNormalized ? "true" : "false");
-				if (meta.bSwizzled)               LogDebug("\tbSwizzled:\t\t%s\n", meta.bSwizzled ? "true" : "false");
-				if (meta.bBigEndianShortSwap)     LogDebug("\tbBigEndianShortSwap:\t%s\n", meta.bBigEndianShortSwap ? "true" : "false");
-				if (meta.bBigEndianLongSwap)      LogDebug("\tbBigEndianLongSwap:\t%s\n", meta.bBigEndianLongSwap ? "true" : "false");
-				if (meta.bSigned)                 LogDebug("\tbSigned:\t\t\t%s\n", meta.bSigned ? "true" : "false");
-				if (meta.bChannelFlip)            LogDebug("\tbChannelFlip:\t\t%s\n", meta.bChannelFlip ? "true" : "false");
-				if (meta.bFloat)                  LogDebug("\tbFloat:\t\t\t%s\n", meta.bFloat ? "true" : "false");
-				if (meta.bHalfFloat)              LogDebug("\tbHalfFloat:\t\t%s\n", meta.bHalfFloat ? "true" : "false");
-				if (meta.bIsDepth)                LogDebug("\tbIsDepth:\t\t%s\n", meta.bIsDepth ? "true" : "false");
-				if (meta.bD16Convert)             LogDebug("\tbD16Convert:\t\t%s\n", meta.bD16Convert ? "true" : "false");
-				if (meta.bD32Convert)             LogDebug("\tbD32Convert:\t\t%s\n", meta.bD32Convert ? "true" : "false");
-				if (meta.bD32FloatConvert)        LogDebug("\tbD32FloatConvert:\t\t%s\n", meta.bD32FloatConvert ? "true" : "false");
-				if (meta.bD24_8Convert)           LogDebug("\tbD24_8Convert:\t\t%s\n", meta.bD24_8Convert ? "true" : "false");
-				if (meta.bConvert10BitFloat)      LogDebug("\tbConvert10BitFloat:\t%s\n", meta.bConvert10BitFloat ? "true" : "false");
-				if (meta.bConvert11Bit10BitFloat) LogDebug("\tbConvert11Bit10BitFloat:\t%s\n", meta.bConvert11Bit10BitFloat ? "true" : "false");
+				if (META.bIsUNorm)                LogDebug("\tbIsUNorm:\t\t%s\n", META.bIsUNorm ? "true" : "false");
+				if (META.bNormalMap)              LogDebug("\tbNormalMap:\t\t%s\n", META.bNormalMap ? "true" : "false");
+				if (META.bNormalized)             LogDebug("\tbNormalize:\t\t%s\n", META.bNormalized ? "true" : "false");
+				if (META.bSwizzled)               LogDebug("\tbSwizzled:\t\t%s\n", META.bSwizzled ? "true" : "false");
+				if (META.bBigEndianShortSwap)     LogDebug("\tbBigEndianShortSwap:\t%s\n", META.bBigEndianShortSwap ? "true" : "false");
+				if (META.bBigEndianLongSwap)      LogDebug("\tbBigEndianLongSwap:\t%s\n", META.bBigEndianLongSwap ? "true" : "false");
+				if (META.bSigned)                 LogDebug("\tbSigned:\t\t\t%s\n", META.bSigned ? "true" : "false");
+				if (META.bChannelFlip)            LogDebug("\tbChannelFlip:\t\t%s\n", META.bChannelFlip ? "true" : "false");
+				if (META.bFloat)                  LogDebug("\tbFloat:\t\t\t%s\n", META.bFloat ? "true" : "false");
+				if (META.bHalfFloat)              LogDebug("\tbHalfFloat:\t\t%s\n", META.bHalfFloat ? "true" : "false");
+				if (META.bIsDepth)                LogDebug("\tbIsDepth:\t\t%s\n", META.bIsDepth ? "true" : "false");
+				if (META.bD16Convert)             LogDebug("\tbD16Convert:\t\t%s\n", META.bD16Convert ? "true" : "false");
+				if (META.bD32Convert)             LogDebug("\tbD32Convert:\t\t%s\n", META.bD32Convert ? "true" : "false");
+				if (META.bD32FloatConvert)        LogDebug("\tbD32FloatConvert:\t\t%s\n", META.bD32FloatConvert ? "true" : "false");
+				if (META.bZlibCompressed)		  LogDebug("\tbZlibCompressed:\t\t%s\n", META.bZlibCompressed ? "true" : "false");
+				if (META.bD24_8Convert)           LogDebug("\tbD24_8Convert:\t\t%s\n", META.bD24_8Convert ? "true" : "false");
+				if (META.bConvert10BitFloat)      LogDebug("\tbConvert10BitFloat:\t%s\n", META.bConvert10BitFloat ? "true" : "false");
+				if (META.bConvert11Bit10BitFloat) LogDebug("\tbConvert11Bit10BitFloat:\t%s\n", META.bConvert11Bit10BitFloat ? "true" : "false");
 			}
 
 			///////////////////////////////
@@ -2860,7 +3083,7 @@ struct G1TG_TEXTURE
 			// We untile, decomp then post convert
 			// untiledTexData -> decompTexData -> postConvertTexData -> finalTexData
 
-			BYTE* texStart = buffer + offset;
+			BYTE* texStart = buffer + offset; if (META.bZlibCompressed) texStart = unzippedData;
 			// for sanity checks between stages
 			BYTE* passOffPointer = nullptr;
 			uint32_t currentImageSize = firstMipSize;
@@ -2878,13 +3101,13 @@ struct G1TG_TEXTURE
 			std::string rawFormatMaster = rawFormat;
 
 			// Endian swap if needed
-			if (meta.bBigEndianShortSwap)
+			if (META.bBigEndianShortSwap)
 			{	//Swap endian for x360 textures
-				if (header.SYSTEM == PLATFORM::X360)
+				if (G1T_HEADER.SYSTEM == PLATFORM::X360)
 				{
 					// gets flipped on decomp
 					// so we dont do it here
-					if (!meta.bSwizzled)
+					if (!META.bSwizzled)
 					{
 						short_swap_byte_order(texStart, currentImageSize);
 					}
@@ -2904,9 +3127,9 @@ struct G1TG_TEXTURE
 					passOffPointer = nullptr;
 
 					// Untile/Unswizzle the data if relevant
-					if (meta.bSwizzled)
+					if (META.bSwizzled)
 					{
-						switch (header.SYSTEM)
+						switch (G1T_HEADER.SYSTEM)
 						{
 						case PLATFORM::PS2: // never found
 							// if not used, passes the pointer on to the next section
@@ -2915,7 +3138,7 @@ struct G1TG_TEXTURE
 							break;
 						case PLATFORM::PS3: // Didnt find any sizzled data to test
 							//untiledTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(currentImageSize); bUntiledTexShouldFree = true;
-							//if (meta.bCompressedFormat)
+							//if (META.bCompressedFormat)
 							//{
 							//	rapi->Noesis_UntileImageDXTEx(untiledTexData, texStart, currentImageSize, WIDTH, HEIGHT, minBytes, currentImageSize, 0, 0);
 							//}
@@ -2941,7 +3164,7 @@ struct G1TG_TEXTURE
 						}
 						case PLATFORM::NWii: // Working
 						{
-							tplFormats_e wTextFormat = getNWiiFormat((uint8_t)texHeader.KTGL_PIXEL_FORMAT);
+							tplFormats_e wTextFormat = getNWiiFormat((uint8_t)G1T_TEX_HEADER.KTGL_PIXEL_FORMAT);
 							BYTE* PALETTE = nullptr;
 							tplPaletteFormats_e PALETTE_TYPE = tplPaletteFormats_e::NONE;
 							// needs palette file
@@ -2969,15 +3192,15 @@ struct G1TG_TEXTURE
 											PopUpMessage(L"ERROR!! PALETTE alloc\n");
 											return;
 										}
-										if (meta.bPalette14)
+										if (META.bPalette14)
 										{
 											PALETTE_TYPE = tplPaletteFormats_e::PRGB565;
 										}
-										else if (meta.bPalette8)
+										else if (META.bPalette8)
 										{
 											PALETTE_TYPE = tplPaletteFormats_e::PRGB5A3;
 										}
-										else if (meta.bPalette4)
+										else if (META.bPalette4)
 										{
 											PALETTE_TYPE = tplPaletteFormats_e::PIA8;
 										}
@@ -3061,7 +3284,7 @@ struct G1TG_TEXTURE
 								return;
 							}
 							tplDecodeImage(untiledTexData, texStart, WIDTH, HEIGHT, wTextFormat, PALETTE_TYPE, PALETTE);
-							meta.bCompressedFormat = false;
+							META.bCompressedFormat = false;
 							currentImageSize = (uint32_t)(WIDTH * HEIGHT * 4);
 							rawFormat = "r8g8b8a8";
 							bitsPerPixel = 0x20;
@@ -3108,7 +3331,7 @@ struct G1TG_TEXTURE
 						case PLATFORM::NWiiU: // working
 						{
 							int texDimType = 1; // Texture2D aka dimensions
-							switch (texHeader.KTGL_TEXTURE_TYPE)
+							switch (G1T_TEX_HEADER.KTGL_TEXTURE_TYPE)
 							{
 							case S_GT1_LOAD_TYPE::PLANAR:
 								texDimType = 1; // Texture2D
@@ -3123,9 +3346,9 @@ struct G1TG_TEXTURE
 								break;
 							}
 							int WiiU_Swizzle = 0; // should pretty much always be 0
-							if (header.HEADER_EX_SIZE != 0)
+							if (G1T_HEADER.HEADER_EX_SIZE != 0)
 							{
-								WiiU_Swizzle = meta.WiiU_SWIZZLE;
+								WiiU_Swizzle = META.WiiU_SWIZZLE;
 							}
 
 							// starting here 
@@ -3138,13 +3361,15 @@ struct G1TG_TEXTURE
 							surf.alignment = 0;
 							surf.depth = PLANE_COUNT; // DEPTH;
 							surf.dim = texDimType;
-							surf.format = getNWiiUFormatValue(texHeader.KTGL_PIXEL_FORMAT, (uint8_t)texHeader.KTGL_GD_COLOR_SPACE);
+							surf.format = getNWiiUFormatValue(G1T_TEX_HEADER.KTGL_PIXEL_FORMAT, (uint8_t)G1T_TEX_HEADER.KTGL_GD_COLOR_SPACE);
 							surf.use = 2; // USE_COLOR_BUFFER
 							surf.pitch = 0;
 							surf.data = buffer + offset; // this function gets the array textures so we always start at the start of the tex buffer
+							if (META.bZlibCompressed) surf.data = unzippedData;
 							surf.numMips = MIPS;
 							surf.mipOffset.resize(MIPS);
 							surf.mipData = buffer + offset; // this function gets the array textures so we always start at the start of the tex buffer
+							if (META.bZlibCompressed) surf.mipData = unzippedData;
 							surf.tileMode = 0x04; // MODE_2D_TILED_THIN1
 							surf.swizzle = WiiU_Swizzle;
 							surf.imageSize = totalTexBufferLen;
@@ -3156,15 +3381,16 @@ struct G1TG_TEXTURE
 						case PLATFORM::WinMac:  // none here but the sizzle can be on this system enum
 						case PLATFORM::WinDX12: // only 64kb swizzle at the moment
 						{
-							if (texHeader.EX_SWIZZLE != EX_SWIZZLE_TYPE::NONE)
+							if (G1T_TEX_HEADER.EX_SWIZZLE != EX_SWIZZLE_TYPE::NONE)
 							{
-								switch (texHeader.EX_SWIZZLE)
+								switch (G1T_TEX_HEADER.EX_SWIZZLE)
 								{
-								case EX_SWIZZLE_TYPE::DX12_64kb:  // DeswizzleD3D12_64KB
+								case EX_SWIZZLE_TYPE::DX12_64kb:        // DeswizzleD3D12_64KB
+								case EX_SWIZZLE_TYPE::ZLIB_COMPRESSED:  // Also DeswizzleD3D12_64KB
 								{
 									if (currentImageSize > 65536) // texture data less than 64kb does not swizzle
 									{
-										if (meta.bCompressedFormat)
+										if (META.bCompressedFormat)
 										{
 											// working on DXT, unsure about other formats
 											untiledTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(currentImageSize); bUntiledTexShouldFree = true;
@@ -3248,8 +3474,8 @@ struct G1TG_TEXTURE
 								blockHeight,
 								minBytes,
 								bitsPerPixel,
-								meta.bCompressedFormat,
-								texHeader.KTGL_TEXTURE_TYPE,
+								META.bCompressedFormat,
+								G1T_TEX_HEADER.KTGL_TEXTURE_TYPE,
 								p,
 								d
 							).offset;
@@ -3262,7 +3488,9 @@ struct G1TG_TEXTURE
 							int widthInBlocks = (WIDTH + (blockWidth - 1)) / blockWidth;
 							int	heightInBlocks = (HEIGHT + (blockHeight - 1)) / blockHeight;
 							uint32_t blockHeightEnum = block_height_enum(heightInBlocks);
-							rapi->Image_UntileBlockLinearGOBs(untiledTexData, totalTexBufferLen, buffer + offset + nOffset, totalTexBufferLen, widthInBlocks, heightInBlocks, blockHeightEnum, minBytes);
+							BYTE* startLoc = buffer + offset + nOffset;
+							if (META.bZlibCompressed) startLoc = unzippedData + nOffset;
+							rapi->Image_UntileBlockLinearGOBs(untiledTexData, totalTexBufferLen, startLoc, totalTexBufferLen, widthInBlocks, heightInBlocks, blockHeightEnum, minBytes);
 							passOffPointer = untiledTexData;
 							break;
 						}
@@ -3301,7 +3529,7 @@ struct G1TG_TEXTURE
 										}
 									}
 								}
-								mip0Offset = buffer + offset;
+								mip0Offset = buffer + offset; if (META.bZlibCompressed) mip0Offset = unzippedData;
 								mip0Offset += mipOff;
 							}
 							else
@@ -3319,7 +3547,7 @@ struct G1TG_TEXTURE
 							// The only way to make a proper deswizzle and untile code would be to reverse the Agc Gpu address logic and default tile allocation as there wasn't any header data for what swizzle was used within any samples found
 							// maybe if more interest happens within the system this untile function will work with more textures
 							
-							//if (meta.bCompressedFormat && (currentImageSize == 65536 || currentImageSize == 16384))
+							//if (META.bCompressedFormat && (currentImageSize == 65536 || currentImageSize == 16384))
 							//{
 							//	int widthInBlocks = (WIDTH + (blockWidth - 1)) / blockWidth;
 							//	int	heightInBlocks = (HEIGHT + (blockHeight - 1)) / blockHeight;
@@ -3327,7 +3555,7 @@ struct G1TG_TEXTURE
 							//}
 							//else
 							//{
-								UnswizzlePS5(mip0Offset, untiledTexData, currentImageSize, WIDTH, HEIGHT, blockWidth, blockHeight, bitsPerPixel, minBytes, meta.bCompressedFormat, rapi);
+								UnswizzlePS5(mip0Offset, untiledTexData, currentImageSize, WIDTH, HEIGHT, blockWidth, blockHeight, bitsPerPixel, minBytes, META.bCompressedFormat, rapi);
 							//}
 							
 							passOffPointer = untiledTexData;
@@ -3360,7 +3588,7 @@ struct G1TG_TEXTURE
 					BYTE* decompTexData = nullptr;
 					bool bDecompTexShouldFree = false;
 
-					if (meta.bCompressedFormat)
+					if (META.bCompressedFormat)
 					{
 						// Decompress PVRTC
 						// Mode		Block	Bits		Bytes 
@@ -3368,7 +3596,7 @@ struct G1TG_TEXTURE
 						// ----------------------------------
 						// 4bpp		4x4		4			8
 						// 2bpp		8x4		2			8
-						if (meta.bIsPVRTC)
+						if (META.bIsPVRTC)
 						{
 							decompTexData = rapi->Image_DecodePVRTC(passOffPointer, (int)currentImageSize, WIDTH, HEIGHT, (int)bitsPerPixel); bDecompTexShouldFree = true;
 							if (!decompTexData)
@@ -3400,7 +3628,7 @@ struct G1TG_TEXTURE
 						// 10x10	1.28		16
 						// 12x10	1.07		16
 						// 12x12	0.89		16
-						else if (meta.bIsASTC)
+						else if (META.bIsASTC)
 						{
 							int pBlockDims[3] = { (int)blockWidth, (int)blockHeight, 1 };
 							int pImageSize[3] = { (int)WIDTH, (int)HEIGHT, 1 };
@@ -3427,9 +3655,9 @@ struct G1TG_TEXTURE
 						// ETC2 RGBA1	4			 8			RGBA with 1 - bit "punchthrough" alpha(fully opaque or fully transparent).
 						// EAC R11		4			 8			Single - channel(Red or grayscale) data, 11 - bits per channel with 0.5 bytes per channel.
 						// EAC RG11		8			 16			Two - channel(Red and Green) data, 11 - bits per channel, 1 byte per pixel total.
-						else if (meta.bIsETC1 || meta.bIsETC2)
+						else if (META.bIsETC1 || META.bIsETC2)
 						{
-							if (meta.bPICAETC)
+							if (META.bPICAETC)
 							{
 								decompTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * 16); bDecompTexShouldFree = true;
 								if (!decompTexData)
@@ -3437,7 +3665,7 @@ struct G1TG_TEXTURE
 									PopUpMessage(L"ERROR!! decompTexData alloc\n");
 									return;
 								}
-								rapi->Image_DecodePICA200ETC(decompTexData, passOffPointer, WIDTH, HEIGHT, meta.b3DSAlpha, 0, 0);
+								rapi->Image_DecodePICA200ETC(decompTexData, passOffPointer, WIDTH, HEIGHT, META.b3DSAlpha, 0, 0);
 								flip_vertically(decompTexData, WIDTH, HEIGHT, 4);
 								passOffPointer = decompTexData;
 							}
@@ -3470,7 +3698,7 @@ struct G1TG_TEXTURE
 						// BC7			16			 8			RGB or RGBA, high - quality compression.
 						else if (fourccFormat != -1)
 						{
-							if (meta.bNormalized)
+							if (META.bNormalized)
 							{
 								decompTexData = rapi->Noesis_ConvertDXT(WIDTH, HEIGHT, passOffPointer, fourccFormat); bDecompTexShouldFree = true;
 								if (!decompTexData)
@@ -3488,9 +3716,9 @@ struct G1TG_TEXTURE
 									PopUpMessage(L"ERROR!! params alloc\n");
 									return;
 								}
-								params->ati2ZScale = texHeader.Z_SCALE;
+								params->ati2ZScale = G1T_TEX_HEADER.Z_SCALE;
 								params->ati2NoNormalize = true;
-								params->decodeAsSigned = meta.bSigned;
+								params->decodeAsSigned = META.bSigned;
 								params->resvBB = false;
 								params->resvBC = false;
 								memset(params->resv, 0, 15 * sizeof(TResvInt));
@@ -3509,7 +3737,7 @@ struct G1TG_TEXTURE
 							currentImageSize = (uint32_t)(WIDTH * HEIGHT * 4);
 						}
 						// Only found on Wii and handled with swizzle code
-						//else if (meta.bPalette4)
+						//else if (META.bPalette4)
 						//{
 						//	bitsPerPixel = 0x20;
 						//	decompTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8));
@@ -3518,7 +3746,7 @@ struct G1TG_TEXTURE
 						//	currentImageSize = (uint32_t)((WIDTH * HEIGHT * bitsPerPixel) / 8);
 						//  passOffPointer = decompTexData;
 						//}
-						//else if (meta.bPalette8)
+						//else if (META.bPalette8)
 						//{
 						//	bitsPerPixel = 0x20;
 						//	decompTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8));
@@ -3532,7 +3760,7 @@ struct G1TG_TEXTURE
 						//	currentImageSize = (uint32_t)((WIDTH * HEIGHT * bitsPerPixel) / 8);
 						//  passOffPointer = decompTexData;
 						//}
-						//else if (meta.bPalette14)
+						//else if (META.bPalette14)
 						//{
 						//	bitsPerPixel = 0x20;
 						//	decompTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8));
@@ -3563,11 +3791,11 @@ struct G1TG_TEXTURE
 					bool bPostConvertTexShouldFree = false;
 
 					// Alpha stored under image
-					if (meta.bHasAlphaAtlas)
+					if (META.bHasAlphaAtlas)
 					{
 						// data should be r8g8b8a8 by now
 						HEIGHT /= 2;
-						if (!meta.bSkipAlphaAtlas)
+						if (!META.bSkipAlphaAtlas)
 						{
 							uint32_t alphaOffset = WIDTH * HEIGHT * 4;
 							for (uint32_t j = 0; j < WIDTH * HEIGHT; j++)
@@ -3581,10 +3809,10 @@ struct G1TG_TEXTURE
 						currentImageSize = (uint32_t)((WIDTH * HEIGHT * bitsPerPixel) / 8);
 					}
 
-					if (meta.bChannelFlip)
+					if (META.bChannelFlip)
 					{
 						// we leave alpha where it is on dxt files
-						if (header.SYSTEM == PLATFORM::X360)
+						if (G1T_HEADER.SYSTEM == PLATFORM::X360)
 						{
 							FlipChannelOrder(&rawFormat[0], fourccFormat == -1 ? true : false);
 						}
@@ -3594,13 +3822,13 @@ struct G1TG_TEXTURE
 						}
 					}
 
-					if (meta.bBigEndianLongSwap)
+					if (META.bBigEndianLongSwap)
 					{
 						long_swap_byte_order(passOffPointer, currentImageSize);
 					}
 
 					// Depth & Stecil convert
-					if (meta.bD24_8Convert)
+					if (META.bD24_8Convert)
 					{
 						bitsPerPixel = 0x50;
 						postConvertTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8)); bPostConvertTexShouldFree = true;
@@ -3615,7 +3843,7 @@ struct G1TG_TEXTURE
 						currentImageSize = (uint32_t)((WIDTH * HEIGHT * bitsPerPixel) / 8);
 						passOffPointer = postConvertTexData;
 					}
-					else if (meta.bD16Convert)
+					else if (META.bD16Convert)
 					{
 						bitsPerPixel = 0x30;
 						postConvertTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8)); bPostConvertTexShouldFree = true;
@@ -3630,7 +3858,7 @@ struct G1TG_TEXTURE
 						currentImageSize = (uint32_t)((WIDTH * HEIGHT * bitsPerPixel) / 8);
 						passOffPointer = postConvertTexData;
 					}
-					else if (meta.bD32Convert)
+					else if (META.bD32Convert)
 					{
 						bitsPerPixel = 0x60;
 						postConvertTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8)); bPostConvertTexShouldFree = true;
@@ -3645,7 +3873,7 @@ struct G1TG_TEXTURE
 						passOffPointer = postConvertTexData;
 					}
 					// weird HDR bit float converts
-					else if (meta.bConvert11Bit10BitFloat)
+					else if (META.bConvert11Bit10BitFloat)
 					{
 						bitsPerPixel = 0x60;
 						postConvertTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8)); bPostConvertTexShouldFree = true;
@@ -3660,7 +3888,7 @@ struct G1TG_TEXTURE
 						currentImageSize = (uint32_t)((WIDTH * HEIGHT * bitsPerPixel) / 8);
 						passOffPointer = postConvertTexData;
 					}
-					else if (meta.bConvert10BitFloat)
+					else if (META.bConvert10BitFloat)
 					{
 						bitsPerPixel = 0x80;
 						postConvertTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8)); bPostConvertTexShouldFree = true;
@@ -3675,7 +3903,7 @@ struct G1TG_TEXTURE
 						currentImageSize = (uint32_t)((WIDTH * HEIGHT * bitsPerPixel) / 8);
 						passOffPointer = postConvertTexData;
 					}
-					else if (meta.bD32FloatConvert)
+					else if (META.bD32FloatConvert)
 					{
 						bitsPerPixel = 0x80;
 						postConvertTexData = (BYTE*)rapi->Noesis_UnpooledAlloc(WIDTH * HEIGHT * (int)(bitsPerPixel / 8)); bPostConvertTexShouldFree = true;
@@ -3691,7 +3919,7 @@ struct G1TG_TEXTURE
 						passOffPointer = postConvertTexData;
 					}
 					// signed to unsigned
-					else if (meta.bSigned)
+					else if (META.bSigned)
 					{
 						if (rawFormat == "r16")
 						{
@@ -3815,6 +4043,12 @@ struct G1TG_TEXTURE
 					minBytes = minBytesMaster;
 					rawFormat = rawFormatMaster;
 				}
+			}
+
+			if (META.bZlibCompressed)
+			{
+				rapi->Noesis_UnpooledFree(unzippedData);
+				unzippedData = nullptr;
 			}
 		}
 	}

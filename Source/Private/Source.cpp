@@ -33,7 +33,7 @@ const char* g_pPluginName = "ProjectG1M";
 const char* g_pPluginDesc = "G1M Noesis plugin";
 
 // For debug tracking
-#define PLUGIN_VERSON "1.9.2.3"
+#define PLUGIN_VERSON "1.9.2.4"
 
 //Options
 bool bMerge = false;
@@ -272,17 +272,17 @@ noesisModel_t* LoadG1EMModel(BYTE* fileBuffer, int bufferLen, int& numMdl, noeRA
 		if (!skipG1t && g1tlData)
 		{
 			uint32_t g1tOffset = 0;
-			G1T_HEADER<bBigEndian> g1tHeader = G1T_HEADER<bBigEndian>(g1tlData, g1tOffset, rapi, g1tLen);
-			if (g1tHeader.bPanic)
+			S_G1T_HEADER<bBigEndian> G1T_HEADER = S_G1T_HEADER<bBigEndian>(g1tlData, g1tOffset, rapi, g1tLen);
+			if (G1T_HEADER.bPanic)
 			{
 				PopUpMessage(L"G1T read error, skipping texture.");
 				skipG1t = true;
 			}
 			else
 			{
-				if (g1tHeader.TEX_COUNT != 1)
+				if (G1T_HEADER.TEX_COUNT != 1)
 				{
-					int texCount = g1tHeader.TEX_COUNT;
+					int texCount = G1T_HEADER.TEX_COUNT;
 					sprintf_s(texTitle, 256, "G1T file has more than one texture.");
 					sprintf_s(texPrompt, 256, "G1T file has %d textures. \nWhich texture would you like to use?", texCount);
 					g1tTexIndex = PromptBetweenNumbers(texTitle, texPrompt, "1", 1, texCount, rapi);
