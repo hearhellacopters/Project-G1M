@@ -1389,10 +1389,15 @@ struct G1TG_TEXTURE
 				META.bUsePS5Size = true;
 			}
 
-			if (G1T_TEX_HEADER.EX_SWIZZLE == EX_SWIZZLE_TYPE::DX12_64kb ||
-				G1T_TEX_HEADER.EX_SWIZZLE == EX_SWIZZLE_TYPE::ZLIB_COMPRESSED)
+			if (G1T_TEX_HEADER.EX_SWIZZLE == EX_SWIZZLE_TYPE::DX12_64kb)
 			{
 				META.bSwizzled = true;
+			}
+
+			if(G1T_TEX_HEADER.EX_SWIZZLE == EX_SWIZZLE_TYPE::ZLIB_COMPRESSED)
+			{
+				META.bSwizzled = true;
+				META.bZlibCompressed = true;
 			}
 
 			if (G1T_HEADER.SYSTEM == PLATFORM::PS4)
@@ -2775,9 +2780,8 @@ struct G1TG_TEXTURE
 			// for zlib compressed data
 			BYTE* unzippedData = nullptr;
 
-			if (G1T_TEX_HEADER.EX_SWIZZLE == EX_SWIZZLE_TYPE::ZLIB_COMPRESSED)
+			if (META.bZlibCompressed)
 			{
-				META.bZlibCompressed = true;
 				// if compressed, parse new headers
 				S_G1T_COMPED_HEADER<bBigEndian> G1T_COMPED_HEADER = S_G1T_COMPED_HEADER<bBigEndian>(buffer, offset, rapi, bufferLen);
 				// Panic check on header read
