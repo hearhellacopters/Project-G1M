@@ -9,7 +9,7 @@
 
 enum class PLATFORM : uint32_t
 {
-	PS2     = 0x00, // Little Endian - ❎ No known g1t files to test
+	PS2     = 0x00, // Little Endian - ❎ No known g1t files to test (aka x32)
 	PS3     = 0x01, // Big Endian    - ❎ didnt find sizzle
 	X360    = 0x02, // Big Endian    - ✅ Working swizzle
 	NWii    = 0x03, // Big Endian    - ✅ Working swizzle
@@ -19,16 +19,17 @@ enum class PLATFORM : uint32_t
 	Android = 0x07, // Little Endian - ❎ No known swizzle
 	iOS     = 0x08, // Little Endian - ❎ No known swizzle
 	NWiiU   = 0x09, // Big Endian    - ✅ Working swizzle
-	WinMac  = 0x0A, // Little Endian - ✅ Working swizzle
-	PS4     = 0x0B, // Little Endian - ✅ Working swizzle
-  //XOne    = 0x0C, // Little Endian - 🔲 Need game rom to confirm this
+	WinMac  = 0x0A, // Little Endian - ✅ Working swizzle (aka x64)
+	PS4     = 0x0B, // Little Endian - ✅ Working swizzle (aka orbis)
+  //XOne    = 0x0C, // Little Endian - 🔲 Need game rom to confirm this (aka X3)
   //???     = 0x0D, 
 	WinDX12 = 0x0E, // Little Endian - ✅ Working swizzle
   //???     = 0x0F, 
 	NSwitch = 0x10, // Little Endian - ✅ Working swizzle
   //???     = 0x11, 
   //???     = 0x12, 
-	PS5     = 0x13, // Little Endian - ✅ Working-ish swizzle (some issues)
+	PS5     = 0x13, // Little Endian - ✅ Working-ish swizzle (some issues) (aka perspero)
+  //XBXS    = 0x14, // (aka X4)
 };
 
 const char* PLATFORM_STR[] = 
